@@ -1,0 +1,4 @@
+/target
+/telegram_database*
+.idea/
+.env

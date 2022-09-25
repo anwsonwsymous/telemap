@@ -1,0 +1,26 @@
+{
+  "maps": [
+    {
+      "src": PUT_YOUR_CHAT_ID
+    }
+  ],
+  "pipelines": [
+    {
+      "name": "Answer Machine. This will answer every third message with static text.",
+      "filters": [
+        {
+          "@type": "Counter",
+          "count": 2
+        }
+      ],
+      "pipes": [
+        {
+          "@type": "StaticText",
+          "formatted_text": {
+            "text":"__TELEMAP__ \n**This is Answer Machine...**"
+          }
+        }
+      ]
+    }
+  ]
+}

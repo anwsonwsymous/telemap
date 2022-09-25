@@ -1,0 +1,24 @@
+[package]
+name = "telemap"
+version = "0.1.0"
+authors = ["anwsonwsymous <anwsonwsymous@gmail.com>"]
+description = "Map content from one chat to another with TDLib."
+edition = "2021"
+
+[[bin]]
+name = "telemap"
+path = "src/main.rs"
+
+[dependencies]
+argh = "0.1.7"
+rust-tdlib = "0.4.1"
+lazy_static = "1.4.0"
+async-trait = { version = "0.1", optional = true }
+tokio = {version = "1", features = ["macros", "rt-multi-thread", "sync", "time"]}
+log = { version = "0.4" }
+env_logger = "0.8"
+serde = {version = "1.0.137", features = ["derive"]}
+serde_json = "1.0.81"
+dotenv = "0.15.0"
+regex = "1.6.0"
+rpassword = "7.0.0"
