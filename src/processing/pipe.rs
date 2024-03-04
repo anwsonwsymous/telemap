@@ -2,6 +2,7 @@ use crate::config::PipeConf;
 use crate::processing::data::DataHub;
 use crate::processing::helpers::find_output_message_text;
 use crate::processing::transform;
+use regex::Regex;
 use rust_tdlib::types::FormattedText;
 
 /// Pipe trait handles received messages and makes output builder (SendMessageBuilder)
@@ -18,6 +19,8 @@ pub enum PipeType {
     StaticText(StaticText),
     /// Search and replace text on send message
     Replace(Replace),
+    /// Search and replace texts with regular expression
+    ReplaceRegExp(ReplaceRegExp),
 }
 
 /// Forward trait calls
@@ -27,6 +30,7 @@ impl Pipe for PipeType {
             Self::Transform(p) => p.handle(data),
             Self::StaticText(p) => p.handle(data),
             Self::Replace(p) => p.handle(data),
+            Self::ReplaceRegExp(p) => p.handle(data),
         }
     }
 }
@@ -44,6 +48,18 @@ impl From<PipeConf> for PipeType {
             PipeConf::Replace { search, replace } => {
                 PipeType::Replace(Replace::builder().search(search).replace(replace).build())
             }
+
+            PipeConf::ReplaceRegExp {
+                search,
+                replace,
+                all,
+            } => PipeType::ReplaceRegExp(
+                ReplaceRegExp::builder()
+                    .search(search)
+                    .replace(replace)
+                    .all(all)
+                    .build(),
+            ),
         }
     }
 }
@@ -98,7 +114,7 @@ impl StaticTextBuilder {
 /// Search and replace text on send message
 #[derive(Debug, Default, Clone)]
 pub struct Replace {
-    search: String,
+    search: Vec<String>,
     replace: String,
 }
 
@@ -113,7 +129,11 @@ impl Pipe for Replace {
     fn handle(&self, data: &mut DataHub) {
         if let Some(m) = &data.output {
             if let Some(formatted_text) = find_output_message_text(m) {
-                let replaced_text = formatted_text.text().replace(&self.search, &self.replace);
+                let mut replaced_text = formatted_text.text().to_owned();
+                for search in &self.search {
+                    replaced_text = replaced_text.replace(search, &self.replace);
+                }
+
                 if formatted_text.text().eq(&replaced_text) {
                     return;
                 }
@@ -134,7 +154,7 @@ pub struct ReplaceBuilder {
 }
 
 impl ReplaceBuilder {
-    pub fn search(&mut self, search: String) -> &mut ReplaceBuilder {
+    pub fn search(&mut self, search: Vec<String>) -> &mut ReplaceBuilder {
         self.inner.search = search;
         self
     }
@@ -145,6 +165,85 @@ impl ReplaceBuilder {
     }
 
     pub fn build(&self) -> Replace {
+        self.inner.clone()
+    }
+}
+
+/// Search and replace texts with regular expression
+#[derive(Debug, Default, Clone)]
+pub struct ReplaceRegExp {
+    search: String,
+    replace: String,
+    all: bool,
+    search_pattern: Option<Regex>,
+}
+
+impl ReplaceRegExp {
+    pub fn builder() -> ReplaceRegExpBuilder {
+        let inner = ReplaceRegExp::default();
+        ReplaceRegExpBuilder { inner }
+    }
+}
+
+impl Pipe for ReplaceRegExp {
+    fn handle(&self, data: &mut DataHub) {
+        if let Some(m) = &data.output {
+            if let Some(formatted_text) = find_output_message_text(m) {
+                let mut replaced_text = formatted_text.text().to_owned();
+
+                if self.all {
+                    replaced_text = self
+                        .search_pattern
+                        .as_ref()
+                        .unwrap()
+                        .replace_all(&replaced_text, &self.replace)
+                        .to_string();
+                } else {
+                    replaced_text = self
+                        .search_pattern
+                        .as_ref()
+                        .unwrap()
+                        .replace(&replaced_text, &self.replace)
+                        .to_string();
+                }
+
+                if formatted_text.text().eq(&replaced_text) {
+                    return;
+                }
+
+                let new_formatted_text = FormattedText::builder()
+                    .text(replaced_text)
+                    .entities(formatted_text.entities().clone())
+                    .build();
+
+                data.set_output_text(new_formatted_text);
+            }
+        }
+    }
+}
+
+pub struct ReplaceRegExpBuilder {
+    inner: ReplaceRegExp,
+}
+
+impl ReplaceRegExpBuilder {
+    pub fn search(&mut self, search: String) -> &mut ReplaceRegExpBuilder {
+        self.inner.search = search;
+        self.inner.search_pattern = Some(Regex::new(&self.inner.search).unwrap());
+        self
+    }
+
+    pub fn replace(&mut self, replace: String) -> &mut ReplaceRegExpBuilder {
+        self.inner.replace = replace;
+        self
+    }
+
+    pub fn all(&mut self, all: bool) -> &mut ReplaceRegExpBuilder {
+        self.inner.all = all;
+        self
+    }
+
+    pub fn build(&self) -> ReplaceRegExp {
         self.inner.clone()
     }
 }
@@ -203,8 +302,74 @@ mod tests {
         let mut data = transformed_data_example(Some("Search Search".to_string()));
         let success_text = formatted_text_example(Some("Replaced Replaced".to_string()));
         let pipe = PipeType::from(PipeConf::Replace {
-            search: "Search".to_string(),
+            search: vec!["Search".to_string()],
             replace: "Replaced".to_string(),
+        });
+
+        pipe.handle(&mut data);
+
+        println!("{:?}", pipe);
+
+        let data_text = match data.output {
+            Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
+            _ => formatted_text_example(None),
+        };
+
+        assert_eq!(data_text.text(), success_text.text());
+    }
+
+    #[test]
+    fn test_replace_multiple() {
+        let mut data = transformed_data_example(Some("Search1 Search2".to_string()));
+        let success_text = formatted_text_example(Some("Replaced Replaced".to_string()));
+        let pipe = PipeType::from(PipeConf::Replace {
+            search: vec!["Search1".to_string(), "Search2".to_string()],
+            replace: "Replaced".to_string(),
+        });
+
+        pipe.handle(&mut data);
+
+        println!("{:?}", pipe);
+
+        let data_text = match data.output {
+            Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
+            _ => formatted_text_example(None),
+        };
+
+        assert_eq!(data_text.text(), success_text.text());
+    }
+
+    #[test]
+    fn test_replace_regexp_all() {
+        let mut data = transformed_data_example(Some("World world word work".to_string()));
+        let success_text =
+            formatted_text_example(Some("replaced replaced replaced replaced".to_string()));
+        let pipe = PipeType::from(PipeConf::ReplaceRegExp {
+            search: r"[wW]or\S+".to_string(),
+            replace: "replaced".to_string(),
+            all: true,
+        });
+
+        pipe.handle(&mut data);
+
+        println!("{:?}", pipe);
+
+        let data_text = match data.output {
+            Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
+            _ => formatted_text_example(None),
+        };
+
+        assert_eq!(data_text.text(), success_text.text());
+    }
+
+    #[test]
+    fn test_replace_regexp_first() {
+        let mut data = transformed_data_example(Some("World world word work".to_string()));
+        let success_text = formatted_text_example(Some("replaced world word work".to_string()));
+        let pipe = PipeType::from(PipeConf::ReplaceRegExp {
+            search: r"[wW]or\S+".to_string(),
+            replace: "replaced".to_string(),
+            all: false,
         });
 
         pipe.handle(&mut data);

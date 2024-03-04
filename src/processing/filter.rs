@@ -4,9 +4,10 @@ use crate::processing::helpers::{
     cmp, find_input_message_duration, find_input_message_file, find_input_message_text,
 };
 #[cfg(feature = "storage")]
-use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
+use pickledb::{PickleDb, PickleDbDumpPolicy};
 use regex::Regex;
 use rust_tdlib::types::MessageContent;
+use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 #[cfg(feature = "storage")]
@@ -28,16 +29,15 @@ pub enum FilterType {
     /// Filter by counter. Counter will be decremented on message receive. When counter becomes 0
     /// filter will return Ok otherwise Err
     Counter(Counter),
-    /// Filter by message type. Only video messages
+    /// Only video messages
     Video(Video),
-    /// Filter by message type. Only photo messages
+    /// Only photo messages
     Photo(Photo),
-    /// Filter by message type. Only animation messages
+    /// Only animation messages
     Animation(Animation),
-    /// Filter by message type. Only document messages
+    /// Only document messages
     Document(Document),
-    /// Filter by message type. Only file messages,
-    /// This includes photo, video, animation and document messages.
+    /// Only file messages, includes photo, video, animation and document messages
     File(File),
     /// Filter by file size
     FileSize(FileSize),
@@ -136,12 +136,20 @@ pub struct Unique;
 impl Filter for Unique {
     fn filter(&self, data: &DataHub) -> FilterResult {
         lazy_static::lazy_static! {
-            static ref STORE: Mutex<PickleDb> = Mutex::new(PickleDb::new("key-value.db", PickleDbDumpPolicy::AutoDump, SerializationMethod::Json));
+            static ref STORE: Mutex<PickleDb> = {
+                let path = Path::new("key-value.db");
+
+                Mutex::new(if path.exists() {
+                    PickleDb::load_json(path, PickleDbDumpPolicy::AutoDump).expect("DB error")
+                } else {
+                    PickleDb::new_json(path, PickleDbDumpPolicy::AutoDump)
+                })
+            };
         }
-        let mut db = STORE.lock().unwrap();
 
         // TODO: For other messages then text, check uniqueness by file_id
 
+        let mut db = STORE.lock().unwrap();
         if let Some(text) = find_input_message_text(data.input.message()) {
             let digest = format!("{:x}", md5::compute(text));
 
@@ -755,12 +763,7 @@ mod tests {
     #[cfg(feature = "storage")]
     #[test]
     fn test_unique() {
-        let original_message_data = DataHub::new(message_example(
-            sender_user_example(),
-            MessageMock::Text(Some("some message".to_string())),
-            false,
-        ));
-        let duplicate_message_data = DataHub::new(message_example(
+        let message_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some("some message".to_string())),
             false,
@@ -768,8 +771,8 @@ mod tests {
 
         let unique_filter = FilterType::from(FilterConf::Unique);
 
-        // Shorter than 10 symbols
-        assert_eq!(Ok(()), unique_filter.filter(&original_message_data));
-        assert_eq!(Err(()), unique_filter.filter(&duplicate_message_data));
+        let _ = unique_filter.filter(&message_data);
+        // Second time should not pass
+        assert_eq!(Err(()), unique_filter.filter(&message_data));
     }
 }

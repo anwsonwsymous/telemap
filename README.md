@@ -32,9 +32,11 @@ Steps below are required for both options
 ## Run in docker
 
 - Build image `docker build -t anwsonwsymous/telemap:slim .`
-  > You can name your image whatever you want instead of `anwsonwsymous/telemap:slim`.
-  >
-  > Building process may take some time.
+  > On `arm64` architecture use `--platform` option to emulate `amd64` 
+  > 
+  > `docker build --platform linux/amd64 -t anwsonwsymous/telemap:slim .`
+  > 
+
 - Copy `config/echo.json.example` to `config/echo.json` and put your chat `id`
 - Run container and pass newly created `json` config path
   ```shell
@@ -199,11 +201,12 @@ There could be multiple pipelines with the same routing.
 
 #### Pipes
 
-| **Pipe Type**  | **Example**                                                             | **Description**                                                                              |
-|----------------|:------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
-| **Transform**  | -                                                                       | _Attached by default to all pipelines.Transforms Input message into Output message as it is_ |
-| **StaticText** | `{"@type":"StaticText","formatted_text":{"text":"Hola"}}`               | _Set text/caption on output message_                                                         |
-| **Replace**    | `{"@type":"Replace","search": "something","replace": "something else"}` | _Search and replace text on output message_                                                  |
+| **Pipe Type**     | **Example**                                                                   | **Description**                                                                                                                                        |
+|-------------------|:------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Transform**     | -                                                                             | _Attached by default to all pipelines.Transforms Input message into Output message as it is_                                                           |
+| **StaticText**    | `{"@type":"StaticText","formatted_text":{"text":"Hola"}}`                     | _Set text/caption on output message_                                                                                                                   |
+| **Replace**       | `{"@type":"Replace","search": ["text1", "text2"],"replace": "replaced text"}` | _Search and replace text on output message_                                                                                                            |
+| **ReplaceRegExp** | `{"@type":"ReplaceRegExp","search": ".","replace": "*", "all": true}`         | _Search and replace texts with regular expression. By default all occurrences should be replaced. Use option `"all": false` for replacing only first._ |
 
 
 ## Contributing

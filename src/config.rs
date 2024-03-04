@@ -127,10 +127,18 @@ pub enum PipeConf {
         #[serde(default)]
         formatted_text: FormattedText,
     },
-    /// Search and replace text on send message
+    /// Search and replace texts on send message
     Replace {
+        search: Vec<String>,
+        #[serde(default)]
+        replace: String,
+    },
+    /// Search and replace texts with regular expression
+    ReplaceRegExp {
         search: String,
         #[serde(default)]
         replace: String,
+        #[serde(default)]
+        all: bool,
     },
 }

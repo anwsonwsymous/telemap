@@ -375,10 +375,10 @@ impl App {
             .database_directory(database)
             .use_secret_chats(true)
             .use_test_dc(false)
-            .use_message_database(true)
-            .use_file_database(true)
-            .use_chat_info_database(true)
-            .enable_storage_optimizer(true)
+            .use_message_database(false)
+            .use_file_database(false)
+            .use_chat_info_database(false)
+            .enable_storage_optimizer(false)
             .build()
     }
 }
