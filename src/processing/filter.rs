@@ -1,10 +1,16 @@
 use crate::config::FilterConf;
 use crate::processing::data::DataHub;
-use crate::processing::helpers::{cmp, find_duration, find_file, find_text};
+use crate::processing::helpers::{
+    cmp, find_input_message_duration, find_input_message_file, find_input_message_text,
+};
+#[cfg(feature = "storage")]
+use pickledb::{PickleDb, PickleDbDumpPolicy, SerializationMethod};
 use regex::Regex;
 use rust_tdlib::types::MessageContent;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+#[cfg(feature = "storage")]
+use std::sync::Mutex;
 
 /// Filters return Ok/Err instead of true/false
 pub type FilterResult = Result<(), ()>;
@@ -41,6 +47,9 @@ pub enum FilterType {
     TextLength(TextLength),
     /// Filter by text/caption where regular expression matches
     RegExp(RegExp),
+    /// Filter duplicates, pass unique messages
+    #[cfg(feature = "storage")]
+    Unique(Unique),
 }
 
 impl Filter for FilterType {
@@ -57,6 +66,8 @@ impl Filter for FilterType {
             Self::Duration(f) => f.filter(data),
             Self::TextLength(f) => f.filter(data),
             Self::RegExp(f) => f.filter(data),
+            #[cfg(feature = "storage")]
+            Self::Unique(f) => f.filter(data),
         }
     }
 }
@@ -95,6 +106,9 @@ impl From<FilterConf> for FilterType {
             FilterConf::Animation => FilterType::Animation(Animation),
 
             FilterConf::File => FilterType::File(File),
+
+            #[cfg(feature = "storage")]
+            FilterConf::Unique => FilterType::Unique(Unique),
         }
     }
 }
@@ -110,6 +124,34 @@ impl Filter for Incoming {
         } else {
             Err(())
         }
+    }
+}
+
+/// Filter duplicates, pass unique messages
+#[cfg(feature = "storage")]
+#[derive(Debug, Default, Clone)]
+pub struct Unique;
+
+#[cfg(feature = "storage")]
+impl Filter for Unique {
+    fn filter(&self, data: &DataHub) -> FilterResult {
+        lazy_static::lazy_static! {
+            static ref STORE: Mutex<PickleDb> = Mutex::new(PickleDb::new("key-value.db", PickleDbDumpPolicy::AutoDump, SerializationMethod::Json));
+        }
+        let mut db = STORE.lock().unwrap();
+
+        // TODO: For other messages then text, check uniqueness by file_id
+
+        if let Some(text) = find_input_message_text(data.input.message()) {
+            let digest = format!("{:x}", md5::compute(text));
+
+            if db.get::<bool>(&digest).is_some() {
+                return Err(());
+            }
+            db.set(&digest, &true).unwrap();
+        }
+
+        Ok(())
     }
 }
 
@@ -172,7 +214,7 @@ impl Duration {
 
 impl Filter for Duration {
     fn filter(&self, data: &DataHub) -> FilterResult {
-        let duration = find_duration(data.input.message());
+        let duration = find_input_message_duration(data.input.message());
 
         match cmp(&self.op, &duration.ok_or(())?, &self.duration) {
             true => Ok(()),
@@ -219,7 +261,7 @@ impl FileSize {
 
 impl Filter for FileSize {
     fn filter(&self, data: &DataHub) -> FilterResult {
-        let file = find_file(data.input.message());
+        let file = find_input_message_file(data.input.message());
 
         match cmp(
             &self.op,
@@ -269,7 +311,7 @@ impl TextLength {
 
 impl Filter for TextLength {
     fn filter(&self, data: &DataHub) -> FilterResult {
-        let text = find_text(data.input.message());
+        let text = find_input_message_text(data.input.message());
 
         match cmp(&self.op, &text.ok_or(())?.len(), &(self.len as usize)) {
             true => Ok(()),
@@ -314,7 +356,7 @@ impl RegExp {
 
 impl Filter for RegExp {
     fn filter(&self, data: &DataHub) -> FilterResult {
-        let text = find_text(data.input.message()).ok_or(())?;
+        let text = find_input_message_text(data.input.message()).ok_or(())?;
 
         match self.pattern.as_ref().ok_or(())?.is_match(text) {
             true => Ok(()),
@@ -708,5 +750,26 @@ mod tests {
 
         assert_eq!(Ok(()), filter.filter(&success_data));
         assert_eq!(Err(()), filter.filter(&fail_data));
+    }
+
+    #[cfg(feature = "storage")]
+    #[test]
+    fn test_unique() {
+        let original_message_data = DataHub::new(message_example(
+            sender_user_example(),
+            MessageMock::Text(Some("some message".to_string())),
+            false,
+        ));
+        let duplicate_message_data = DataHub::new(message_example(
+            sender_user_example(),
+            MessageMock::Text(Some("some message".to_string())),
+            false,
+        ));
+
+        let unique_filter = FilterType::from(FilterConf::Unique);
+
+        // Shorter than 10 symbols
+        assert_eq!(Ok(()), unique_filter.filter(&original_message_data));
+        assert_eq!(Err(()), unique_filter.filter(&duplicate_message_data));
     }
 }

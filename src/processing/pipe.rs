@@ -1,10 +1,8 @@
 use crate::config::PipeConf;
 use crate::processing::data::DataHub;
+use crate::processing::helpers::find_output_message_text;
 use crate::processing::transform;
-use rust_tdlib::types::{
-    FormattedText, InputMessageAnimation, InputMessageContent, InputMessagePhoto, InputMessageText,
-    InputMessageVideo,
-};
+use rust_tdlib::types::FormattedText;
 
 /// Pipe trait handles received messages and makes output builder (SendMessageBuilder)
 pub trait Pipe {
@@ -18,6 +16,8 @@ pub enum PipeType {
     Transform(Transform),
     /// Sets static text on send message. On media content this will set "caption", otherwise "text"
     StaticText(StaticText),
+    /// Search and replace text on send message
+    Replace(Replace),
 }
 
 /// Forward trait calls
@@ -26,6 +26,7 @@ impl Pipe for PipeType {
         match self {
             Self::Transform(p) => p.handle(data),
             Self::StaticText(p) => p.handle(data),
+            Self::Replace(p) => p.handle(data),
         }
     }
 }
@@ -38,6 +39,10 @@ impl From<PipeConf> for PipeType {
 
             PipeConf::StaticText { formatted_text } => {
                 PipeType::StaticText(StaticText::builder().text(formatted_text).build())
+            }
+
+            PipeConf::Replace { search, replace } => {
+                PipeType::Replace(Replace::builder().search(search).replace(replace).build())
             }
         }
     }
@@ -56,12 +61,12 @@ impl Pipe for Transform {
     }
 }
 
+/// Sets static text on send message. On media content this will set "caption", otherwise "text"
 #[derive(Debug, Default, Clone)]
 pub struct StaticText {
     formatted_text: FormattedText,
 }
 
-/// Sets static text on send message. On media content this will set "caption", otherwise "text"
 impl StaticText {
     pub fn builder() -> StaticTextBuilder {
         let inner = StaticText::default();
@@ -71,44 +76,10 @@ impl StaticText {
 
 impl Pipe for StaticText {
     fn handle(&self, data: &mut DataHub) {
-        match &data.output {
-            Some(InputMessageContent::InputMessageVideo(m)) => {
-                data.output = Some(InputMessageContent::InputMessageVideo(
-                    InputMessageVideo::builder()
-                        .video(m.video())
-                        .caption(&self.formatted_text)
-                        .build(),
-                ));
-            }
-            Some(InputMessageContent::InputMessagePhoto(m)) => {
-                data.output = Some(InputMessageContent::InputMessagePhoto(
-                    InputMessagePhoto::builder()
-                        .photo(m.photo())
-                        .caption(&self.formatted_text)
-                        .build(),
-                ));
-            }
-            Some(InputMessageContent::InputMessageAnimation(m)) => {
-                data.output = Some(InputMessageContent::InputMessageAnimation(
-                    InputMessageAnimation::builder()
-                        .animation(m.animation())
-                        .caption(&self.formatted_text)
-                        .build(),
-                ));
-            }
-            Some(InputMessageContent::InputMessageText(_)) => {
-                data.output = Some(InputMessageContent::InputMessageText(
-                    InputMessageText::builder()
-                        .text(&self.formatted_text)
-                        .build(),
-                ))
-            }
-            _ => (),
-        };
+        data.set_output_text(self.formatted_text.clone());
     }
 }
 
-/// Builder struct for StaticText pipe
 pub struct StaticTextBuilder {
     inner: StaticText,
 }
@@ -124,6 +95,60 @@ impl StaticTextBuilder {
     }
 }
 
+/// Search and replace text on send message
+#[derive(Debug, Default, Clone)]
+pub struct Replace {
+    search: String,
+    replace: String,
+}
+
+impl Replace {
+    pub fn builder() -> ReplaceBuilder {
+        let inner = Replace::default();
+        ReplaceBuilder { inner }
+    }
+}
+
+impl Pipe for Replace {
+    fn handle(&self, data: &mut DataHub) {
+        if let Some(m) = &data.output {
+            if let Some(formatted_text) = find_output_message_text(m) {
+                let replaced_text = formatted_text.text().replace(&self.search, &self.replace);
+                if formatted_text.text().eq(&replaced_text) {
+                    return;
+                }
+
+                let new_formatted_text = FormattedText::builder()
+                    .text(replaced_text)
+                    .entities(formatted_text.entities().clone())
+                    .build();
+
+                data.set_output_text(new_formatted_text);
+            }
+        }
+    }
+}
+
+pub struct ReplaceBuilder {
+    inner: Replace,
+}
+
+impl ReplaceBuilder {
+    pub fn search(&mut self, search: String) -> &mut ReplaceBuilder {
+        self.inner.search = search;
+        self
+    }
+
+    pub fn replace(&mut self, replace: String) -> &mut ReplaceBuilder {
+        self.inner.replace = replace;
+        self
+    }
+
+    pub fn build(&self) -> Replace {
+        self.inner.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::PipeConf;
@@ -134,10 +159,10 @@ mod tests {
     };
     use rust_tdlib::types::InputMessageContent;
 
-    fn transformed_data_example() -> DataHub {
+    fn transformed_data_example(message: Option<String>) -> DataHub {
         let mut data = DataHub::new(message_example(
             sender_user_example(),
-            MessageMock::Text(None),
+            MessageMock::Text(message),
             false,
         ));
 
@@ -148,14 +173,14 @@ mod tests {
 
     #[test]
     fn test_transform() {
-        let data = transformed_data_example();
+        let data = transformed_data_example(None);
 
         assert!(data.output.is_some());
     }
 
     #[test]
     fn test_static_text() {
-        let mut data = transformed_data_example();
+        let mut data = transformed_data_example(None);
         let success_formatted_text = formatted_text_example(Some("Test Text".to_string()));
         let pipe = PipeType::from(PipeConf::StaticText {
             formatted_text: success_formatted_text.clone(),
@@ -171,5 +196,26 @@ mod tests {
         };
 
         assert_eq!(success_formatted_text.text(), data_text.text());
+    }
+
+    #[test]
+    fn test_replace() {
+        let mut data = transformed_data_example(Some("Search Search".to_string()));
+        let success_text = formatted_text_example(Some("Replaced Replaced".to_string()));
+        let pipe = PipeType::from(PipeConf::Replace {
+            search: "Search".to_string(),
+            replace: "Replaced".to_string(),
+        });
+
+        pipe.handle(&mut data);
+
+        println!("{:?}", pipe);
+
+        let data_text = match data.output {
+            Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
+            _ => formatted_text_example(None),
+        };
+
+        assert_eq!(data_text.text(), success_text.text());
     }
 }

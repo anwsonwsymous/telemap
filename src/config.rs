@@ -112,6 +112,8 @@ pub enum FilterConf {
     RegExp {
         exp: String,
     },
+    #[cfg(feature = "storage")]
+    Unique,
 }
 
 /// All available Pipes
@@ -124,5 +126,11 @@ pub enum PipeConf {
     StaticText {
         #[serde(default)]
         formatted_text: FormattedText,
+    },
+    /// Search and replace text on send message
+    Replace {
+        search: String,
+        #[serde(default)]
+        replace: String,
     },
 }

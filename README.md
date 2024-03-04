@@ -35,24 +35,27 @@ Steps below are required for both options
   > You can name your image whatever you want instead of `anwsonwsymous/telemap:slim`.
   >
   > Building process may take some time.
+- Copy `config/echo.json.example` to `config/echo.json` and put your chat `id`
 - Run container and pass newly created `json` config path
   ```shell
   docker run \
+            --rm \
             --init \
             --interactive \
             --tty \
             --memory 25m \
-            --restart always \
             --volume $(pwd)/telegram_database:/app/telegram_database \
             --volume $(pwd)/config:/config \
             --volume $(pwd)/.env:/app/.env \
             --name telemap-app \
-            anwsonwsymous/telemap:slim -c /config/answer_machine.json
+            anwsonwsymous/telemap:slim -c /config/echo.json
   ```
 
 ## Run manually
 
 Build `tdjson` [manually](https://core.telegram.org/tdlib/docs/#building) or [copy from docker image](#copy_tdjson_from_docker). 
+
+For linking `tdjson` either use `RUSTFLAGS` or `LD_LIBRARY_PATH` environment variable.
 
 Currently, supported version is `18.0.0`
 
@@ -179,26 +182,28 @@ There could be multiple pipelines with the same routing.
 
 #### Filters
 
-| **Filter Type** |                  **Example**                   | **Description**                                                  |
-|-----------------|:----------------------------------------------:|------------------------------------------------------------------|
-| **Incoming**    |                       -                        | _Attached by default to all pipelines, to prevent infinite loop_ |
-| **Video**       |              `{"@type":"Video"}`               | _Only video messages_                                            |
-| **Photo**       |              `{"@type":"Photo"}`               | _Only photo messages_                                            |
-| **Animation**   |            `{"@type":"Animation"}`             | _Only animation messages_                                        |
-| **Document**    |             `{"@type":"Document"}`             | _Only document messages_                                         |
-| **File**        |               `{"@type":"File"}`               | _Any file content messages (video, photo, document, animation)_  |
-| **Counter**     |        `{"@type":"Counter","count":5}`         | _Every `nth` message_                                            |
-| **FileSize**    |  `{"@type":"FileSize","size":2000,"op":"<"}`   | _Any file content's size in MB_                                  |
-| **Duration**    | `{"@type":"Duration","duration":60, "op":">"}` | _Animation or video duration_                                    |
-| **TextLength**  |  `{"@type":"TextLength","len":50,"op":">="}`   | _Text/caption length_                                            |
-| **RegExp**      |     `{"@type":"RegExp","exp":"^[0-9]+$"}`      | _Messages which text/caption matches pattern_                    |
+| **Filter Type** | **Example**                                    | **Description**                                                  | Feature   |
+|-----------------|:-----------------------------------------------|------------------------------------------------------------------|-----------|
+| **Incoming**    | -                                              | _Attached by default to all pipelines, to prevent infinite loop_ | -         |
+| **Video**       | `{"@type":"Video"}`                            | _Only video messages_                                            | -         |
+| **Photo**       | `{"@type":"Photo"}`                            | _Only photo messages_                                            | -         |
+| **Animation**   | `{"@type":"Animation"}`                        | _Only animation messages_                                        | -         |
+| **Document**    | `{"@type":"Document"}`                         | _Only document messages_                                         | -         |
+| **File**        | `{"@type":"File"}`                             | _Any file content messages (video, photo, document, animation)_  | -         |
+| **Counter**     | `{"@type":"Counter","count":5}`                | _Every `nth` message_                                            | -         |
+| **FileSize**    | `{"@type":"FileSize","size":2000,"op":"<"}`    | _Any file content's size in MB_                                  | -         |
+| **Duration**    | `{"@type":"Duration","duration":60, "op":">"}` | _Animation or video duration_                                    | -         |
+| **TextLength**  | `{"@type":"TextLength","len":50,"op":">="}`    | _Text/caption length_                                            | -         |
+| **RegExp**      | `{"@type":"RegExp","exp":"^[0-9]+$"}`          | _Messages which text/caption matches pattern_                    | -         |
+| **Unique**      | `{"@type":"Unique"}`                           | _Pass only unique messages_                                      | `storage` |
 
 #### Pipes
 
-| **Pipe Type**  |                        **Example**                        | **Description**                                                                              |
-|----------------|:---------------------------------------------------------:|----------------------------------------------------------------------------------------------|
-| **Transform**  |                             -                             | _Attached by default to all pipelines.Transforms Input message into Output message as it is_ |
-| **StaticText** | `{"@type":"StaticText","formatted_text":{"text":"Hola"}}` | _Set text/caption on output message_                                                         |
+| **Pipe Type**  | **Example**                                                             | **Description**                                                                              |
+|----------------|:------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| **Transform**  | -                                                                       | _Attached by default to all pipelines.Transforms Input message into Output message as it is_ |
+| **StaticText** | `{"@type":"StaticText","formatted_text":{"text":"Hola"}}`               | _Set text/caption on output message_                                                         |
+| **Replace**    | `{"@type":"Replace","search": "something","replace": "something else"}` | _Search and replace text on output message_                                                  |
 
 
 ## Contributing
@@ -223,5 +228,7 @@ docker run \
           --volume $(pwd):/app \
           anwsonwsymous/telemap:slim
 # Run with cargo
-TELEGRAM_DATABASE="telegram_database_dev" RUSTFLAGS="-C link-args=-Wl,-rpath,/usr/local/lib" cargo run -- -c /app/config/test.json
+cargo run -- -c /app/config/test.json
+# Run tests
+cargo  test
 ```

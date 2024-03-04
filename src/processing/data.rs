@@ -1,4 +1,7 @@
-use rust_tdlib::types::{InputMessageContent, UpdateNewMessage};
+use rust_tdlib::types::{
+    FormattedText, InputMessageAnimation, InputMessageContent, InputMessagePhoto, InputMessageText,
+    InputMessageVideo, UpdateNewMessage,
+};
 
 #[derive(Debug)]
 /// Main struct which contains input message and output builder.
@@ -15,5 +18,40 @@ impl DataHub {
             input,
             output: None,
         }
+    }
+
+    pub fn set_output_text(&mut self, text: FormattedText) {
+        match &self.output {
+            Some(InputMessageContent::InputMessageVideo(m)) => {
+                self.output = Some(InputMessageContent::InputMessageVideo(
+                    InputMessageVideo::builder()
+                        .video(m.video())
+                        .caption(text)
+                        .build(),
+                ));
+            }
+            Some(InputMessageContent::InputMessagePhoto(m)) => {
+                self.output = Some(InputMessageContent::InputMessagePhoto(
+                    InputMessagePhoto::builder()
+                        .photo(m.photo())
+                        .caption(text)
+                        .build(),
+                ));
+            }
+            Some(InputMessageContent::InputMessageAnimation(m)) => {
+                self.output = Some(InputMessageContent::InputMessageAnimation(
+                    InputMessageAnimation::builder()
+                        .animation(m.animation())
+                        .caption(text)
+                        .build(),
+                ));
+            }
+            Some(InputMessageContent::InputMessageText(_)) => {
+                self.output = Some(InputMessageContent::InputMessageText(
+                    InputMessageText::builder().text(text).build(),
+                ))
+            }
+            _ => (),
+        };
     }
 }

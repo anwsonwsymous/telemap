@@ -1,12 +1,13 @@
 use rust_tdlib::types::{
-    File, InputFile, InputFileId, InputMessageAnimation, InputMessageContent, InputMessageDocument,
-    InputMessagePhoto, InputMessageText, InputMessageVideo, Message, MessageContent,
+    File, FormattedText, InputFile, InputFileId, InputMessageAnimation, InputMessageContent,
+    InputMessageDocument, InputMessagePhoto, InputMessageText, InputMessageVideo, Message,
+    MessageContent,
 };
 
 /// Find file in message content (Video, Animation, Document, Photo).
 /// For photo's this will return first photo size
-pub(crate) fn find_file(input: &Message) -> Option<&File> {
-    match input.content() {
+pub(crate) fn find_input_message_file(message: &Message) -> Option<&File> {
+    match message.content() {
         MessageContent::MessageVideo(m) => Some(m.video().video()),
         MessageContent::MessagePhoto(m) => Some(m.photo().sizes().first()?.photo()),
         MessageContent::MessageAnimation(m) => Some(m.animation().animation()),
@@ -16,21 +17,32 @@ pub(crate) fn find_file(input: &Message) -> Option<&File> {
 }
 
 /// Find Text message in message content, for media's return caption
-pub(crate) fn find_text(input: &Message) -> Option<&String> {
-    match input.content() {
-        MessageContent::MessageVideo(m) => Some(m.caption().text()),
+pub(crate) fn find_input_message_text(message: &Message) -> Option<&String> {
+    match message.content() {
+        MessageContent::MessageText(m) => Some(m.text().text()),
         MessageContent::MessagePhoto(m) => Some(m.caption().text()),
         MessageContent::MessageAnimation(m) => Some(m.caption().text()),
-        MessageContent::MessageText(m) => Some(m.text().text()),
+        MessageContent::MessageVideo(m) => Some(m.caption().text()),
         _ => None,
     }
 }
 
 /// Find message duration from video/animation medias.
-pub(crate) fn find_duration(input: &Message) -> Option<i32> {
-    match input.content() {
+pub(crate) fn find_input_message_duration(message: &Message) -> Option<i32> {
+    match message.content() {
         MessageContent::MessageVideo(m) => Some(m.video().duration()),
         MessageContent::MessageAnimation(m) => Some(m.animation().duration()),
+        _ => None,
+    }
+}
+
+/// Find Text message from InputMessageContent
+pub(crate) fn find_output_message_text(message: &InputMessageContent) -> Option<&FormattedText> {
+    match message {
+        InputMessageContent::InputMessageText(m) => Some(m.text()),
+        InputMessageContent::InputMessageVideo(m) => Some(m.caption()),
+        InputMessageContent::InputMessagePhoto(m) => Some(m.caption()),
+        InputMessageContent::InputMessageAnimation(m) => Some(m.caption()),
         _ => None,
     }
 }
