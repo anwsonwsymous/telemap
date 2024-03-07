@@ -1,13 +1,10 @@
-/// Contains received message and new message content builder
 mod data;
-/// Filters for received messages. Applied before pipes
 mod filter;
+mod filters;
 mod helpers;
-/// Data handling types
 mod pipe;
-/// Pipeline controls process from filtering to creating send message content builder
 pub mod pipeline;
-
+mod pipes;
 #[cfg(test)]
 mod test_helpers;
 

@@ -1,7 +1,9 @@
 use crate::config::PipelineConf;
 use crate::processing::data::DataHub;
-use crate::processing::filter::{Filter, FilterType, Incoming};
-use crate::processing::pipe::{Pipe, PipeType, Transform};
+use crate::processing::filter::{Filter, FilterType};
+use crate::processing::filters::Incoming;
+use crate::processing::pipe::{Pipe, PipeType};
+use crate::processing::pipes::Transform;
 use rust_tdlib::types::{InputMessageContent, UpdateNewMessage};
 
 /// Return type of pipeline

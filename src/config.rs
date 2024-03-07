@@ -88,11 +88,12 @@ pub struct PipelineConf {
 #[serde(tag = "@type")]
 pub enum FilterConf {
     Incoming,
+    Text,
     Video,
     Photo,
     Animation,
     Document,
-    File,
+    AnyFile,
     Duration {
         duration: i32,
         op: String,
@@ -109,8 +110,14 @@ pub enum FilterConf {
         size: f32,
         op: String,
     },
-    RegExp {
+    Regexp {
         exp: String,
+    },
+    BlackList {
+        words: Vec<String>,
+    },
+    WhiteList {
+        words: Vec<String>,
     },
     #[cfg(feature = "storage")]
     Unique,
@@ -134,7 +141,7 @@ pub enum PipeConf {
         replace: String,
     },
     /// Search and replace texts with regular expression
-    ReplaceRegExp {
+    ReplaceRegexp {
         search: String,
         #[serde(default)]
         replace: String,

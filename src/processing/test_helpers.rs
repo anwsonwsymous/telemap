@@ -1,3 +1,6 @@
+use crate::config::PipeConf;
+use crate::processing::data::DataHub;
+use crate::processing::pipe::{Pipe, PipeType};
 use rust_tdlib::types::{
     Animation, Document, File, FormattedText, LocalFile, Message, MessageAnimation, MessageContent,
     MessageDocument, MessagePhoto, MessageSender, MessageSenderUser, MessageText, MessageVideo,
@@ -101,4 +104,16 @@ pub(crate) fn message_example(
                 .build(),
         )
         .build()
+}
+
+pub(crate) fn transformed_data_example(message: Option<String>) -> DataHub {
+    let mut data = DataHub::new(message_example(
+        sender_user_example(),
+        MessageMock::Text(message),
+        false,
+    ));
+
+    let pipe = PipeType::from(PipeConf::Transform);
+    pipe.handle(&mut data);
+    data
 }
