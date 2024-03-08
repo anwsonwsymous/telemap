@@ -112,8 +112,8 @@ impl App {
     async fn handle_updates(&self, client: &Client<TdJson>, mut receiver: Receiver<Box<Update>>) {
         let default_pipeline = vec![Pipeline::default()];
 
-        loop {
-            if let Update::NewMessage(new_message) = *receiver.recv().await.unwrap() {
+        while let Some(update) = receiver.recv().await {
+            if let Update::NewMessage(new_message) = *update {
                 let source_chat_id = &new_message.message().chat_id();
 
                 if let Some(destination_chats) = self.mappings_index.get(source_chat_id) {
@@ -121,25 +121,27 @@ impl App {
                         let pipelines = self
                             .pipelines_index
                             .find(source_chat_id, dest_chat_id)
-                            .unwrap_or(&default_pipeline);
+                            .unwrap_or_else(|_| {
+                                log::warn!("No pipelines found for source {} to destination {}, using default.", source_chat_id, dest_chat_id);
+                                &default_pipeline
+                            });
 
                         log::info!("Pipelines found for received message: {:?}", pipelines);
 
-                        let send_messages = pipelines
-                            .iter()
-                            .map(|p| p.handle(new_message.clone()))
-                            .filter(|r| r.is_ok())
-                            .map(|result| {
-                                SendMessage::builder()
-                                    .input_message_content(result.unwrap())
-                                    .chat_id(*dest_chat_id)
-                                    .build()
-                            });
-
-                        for send_message in send_messages {
-                            match client.send_message(send_message).await {
-                                Ok(_) => log::debug!("Message sent to {}", dest_chat_id),
-                                Err(e) => log::error!("Message not sent: {}", e),
+                        for pipeline in pipelines {
+                            match pipeline.handle(new_message.clone()) {
+                                Ok(output_message_content) => {
+                                    let send_message = SendMessage::builder()
+                                        .input_message_content(output_message_content)
+                                        .chat_id(*dest_chat_id)
+                                        .build();
+                                    if let Err(e) = client.send_message(send_message).await {
+                                        log::error!("Message not sent to {}: {}", dest_chat_id, e);
+                                    } else {
+                                        log::debug!("Message sent to {}", dest_chat_id);
+                                    }
+                                }
+                                Err(e) => log::error!("Error handling pipeline for message: {}", e),
                             }
                         }
                     }

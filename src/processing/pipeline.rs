@@ -5,9 +5,28 @@ use crate::processing::filters::Incoming;
 use crate::processing::pipe::{Pipe, PipeType};
 use crate::processing::pipes::Transform;
 use rust_tdlib::types::{InputMessageContent, UpdateNewMessage};
+use std::error::Error;
+use std::fmt;
 
 /// Return type of pipeline
-pub type PipelineResult = Result<InputMessageContent, ()>;
+pub type PipelineResult = Result<InputMessageContent, PipelineError>;
+
+#[derive(Debug)]
+pub enum PipelineError {
+    FilterError(String),
+    OutputError(String),
+}
+impl fmt::Display for PipelineError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PipelineError::FilterError(message) => {
+                write!(f, "Filter rejected: '{}'", message)
+            }
+            PipelineError::OutputError(message) => write!(f, "Output error: {}", message),
+        }
+    }
+}
+impl Error for PipelineError {}
 
 /// Contains the filters and output message building processes of mapping messages from one chat to another.
 #[derive(Debug, Clone)]
@@ -32,19 +51,19 @@ impl Default for Pipeline {
 
 impl From<PipelineConf> for Pipeline {
     fn from(pipeline_conf: PipelineConf) -> Self {
-        let mut pipeline = Pipeline::default();
-
-        for filter_conf in pipeline_conf.filters {
-            pipeline.filters.push(FilterType::from(filter_conf))
+        Pipeline {
+            name: pipeline_conf.name,
+            filters: pipeline_conf
+                .filters
+                .into_iter()
+                .map(FilterType::from)
+                .collect(),
+            pipes: pipeline_conf
+                .pipes
+                .into_iter()
+                .map(PipeType::from)
+                .collect(),
         }
-
-        for pipe_conf in pipeline_conf.pipes {
-            pipeline.pipes.push(PipeType::from(pipe_conf));
-        }
-
-        pipeline.name = pipeline_conf.name;
-
-        pipeline
     }
 }
 
@@ -53,16 +72,19 @@ impl Pipeline {
         let mut data = DataHub::new(input);
 
         // First filter data
-        for filter in &self.filters {
-            filter.filter(&data)?;
-        }
+        self.filters.iter().try_for_each(|filter| {
+            filter
+                .filter(&data)
+                .map_err(|_| PipelineError::FilterError(format!("{:?}", filter)))
+        })?;
 
         // Then make output (run pipes)
-        for pipe in &self.pipes {
-            pipe.handle(&mut data);
-        }
+        self.pipes.iter().for_each(|pipe| pipe.handle(&mut data));
 
-        data.output.ok_or(())
+        data.output.ok_or(PipelineError::OutputError(format!(
+            "No output generated in pipeline {}",
+            self.name
+        )))
     }
 }
 

@@ -51,11 +51,11 @@ pub(crate) fn find_output_message_text(message: &InputMessageContent) -> Option<
 /// Compare function with string operator
 pub(crate) fn cmp<T: PartialOrd>(operator: &str, left: &T, right: &T) -> bool {
     match operator {
-        "<" if left < right => true,
-        ">" if left > right => true,
-        "=" if left == right => true,
-        ">=" if left >= right => true,
-        "<=" if left <= right => true,
+        "<" => left < right,
+        ">" => left > right,
+        "=" => left == right,
+        ">=" => left >= right,
+        "<=" => left <= right,
         _ => false,
     }
 }
