@@ -1,5 +1,7 @@
 CHANGELOG
 ===
+## v0.5.0
+* new pipe - `StaticPhoto`
 ## v0.4.0
 * new filter - `BlackList` words
 * new filter - `WhiteList` words

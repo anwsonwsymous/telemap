@@ -1,7 +1,7 @@
 use rust_tdlib::types::{
-    File, FormattedText, InputFile, InputFileId, InputMessageAnimation, InputMessageContent,
-    InputMessageDocument, InputMessagePhoto, InputMessageText, InputMessageVideo, Message,
-    MessageContent,
+    File, FormattedText, InputFile, InputFileId, InputFileLocal, InputMessageAnimation,
+    InputMessageContent, InputMessageDocument, InputMessagePhoto, InputMessageText,
+    InputMessageVideo, Message, MessageContent,
 };
 
 /// Find file in message content (Video, Animation, Document, Photo).
@@ -128,4 +128,22 @@ pub(crate) fn transform(input: &Message) -> Result<InputMessageContent, ()> {
 
         _ => Err(()),
     }
+}
+
+pub(crate) fn transform_output_to_photo_message(
+    message: &InputMessageContent,
+    path: &str,
+) -> InputMessageContent {
+    let mut builder = InputMessagePhoto::builder();
+    if let Some(formatted_text) = find_output_message_text(message) {
+        builder.caption(formatted_text);
+    }
+
+    InputMessageContent::InputMessagePhoto(
+        builder
+            .photo(InputFile::Local(
+                InputFileLocal::builder().path(path).build(),
+            ))
+            .build(),
+    )
 }

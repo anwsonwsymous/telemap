@@ -134,6 +134,8 @@ pub enum PipeConf {
         #[serde(default)]
         formatted_text: FormattedText,
     },
+    /// Sets static photo on send message
+    StaticPhoto { path: String },
     /// Search and replace texts on send message
     Replace {
         search: Vec<String>,

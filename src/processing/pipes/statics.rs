@@ -1,4 +1,5 @@
 use crate::processing::data::DataHub;
+use crate::processing::helpers::transform_output_to_photo_message;
 use crate::processing::pipe::Pipe;
 use rust_tdlib::types::FormattedText;
 
@@ -36,6 +37,43 @@ impl StaticTextBuilder {
     }
 }
 
+/// Sets static photo on send message
+#[derive(Debug, Default, Clone)]
+pub struct StaticPhoto {
+    path: String,
+}
+
+impl StaticPhoto {
+    pub fn builder() -> StaticPhotoBuilder {
+        let inner = StaticPhoto::default();
+        StaticPhotoBuilder { inner }
+    }
+}
+
+impl Pipe for StaticPhoto {
+    fn handle(&self, data: &mut DataHub) {
+        data.output = Some(transform_output_to_photo_message(
+            data.output.as_ref().unwrap(),
+            &self.path,
+        ));
+    }
+}
+
+pub struct StaticPhotoBuilder {
+    inner: StaticPhoto,
+}
+
+impl StaticPhotoBuilder {
+    pub fn path(&mut self, path: String) -> &mut StaticPhotoBuilder {
+        self.inner.path = path;
+        self
+    }
+
+    pub fn build(&self) -> StaticPhoto {
+        self.inner.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::PipeConf;
@@ -52,11 +90,25 @@ mod tests {
         });
         pipe.handle(&mut data);
 
-        println!("{:?}", success_formatted_text);
-        println!("{:?}", pipe);
-
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
+            _ => formatted_text_example(None),
+        };
+
+        assert_eq!(success_formatted_text.text(), data_text.text());
+    }
+
+    #[test]
+    fn test_static_photo() {
+        let mut data = transformed_data_example(Some("Something".to_string()));
+        let success_formatted_text = formatted_text_example(Some("Something".to_string()));
+        let pipe = PipeType::from(PipeConf::StaticPhoto {
+            path: "resources/photo.jpg".to_string(),
+        });
+        pipe.handle(&mut data);
+
+        let data_text = match data.output {
+            Some(InputMessageContent::InputMessagePhoto(m)) => m.caption().clone(),
             _ => formatted_text_example(None),
         };
 

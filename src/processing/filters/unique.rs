@@ -13,7 +13,7 @@ impl Filter for Unique {
     fn filter(&self, data: &DataHub) -> FilterResult {
         lazy_static::lazy_static! {
             static ref STORE: Mutex<PickleDb> = {
-                let path = Path::new("key-value.db");
+                let path = Path::new("storage/key-value.db");
 
                 Mutex::new(if path.exists() {
                     PickleDb::load_json(path, PickleDbDumpPolicy::AutoDump).expect("DB error")

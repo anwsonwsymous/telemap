@@ -361,8 +361,11 @@ impl App {
 
     fn build_parameters(&self) -> TdlibParameters {
         // Variables from environment
-        let api_id = env::var("TELEGRAM_API_ID").unwrap().parse::<i32>().unwrap();
-        let api_hash = env::var("TELEGRAM_API_HASH").unwrap();
+        let api_id = env::var("TELEGRAM_API_ID")
+            .expect("set TELEGRAM_API_ID in .env")
+            .parse::<i32>()
+            .unwrap();
+        let api_hash = env::var("TELEGRAM_API_HASH").expect("set TELEGRAM_API_HASH in .env");
         let database =
             env::var("TELEGRAM_DATABASE").unwrap_or_else(|_| "telegram_database".to_string());
 
