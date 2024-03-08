@@ -10,7 +10,6 @@ pub type FilterResult = Result<(), ()>;
 
 /// Trait to filter received messages before mapping
 pub trait Filter {
-    /// Check anything in received message and return Ok or Err
     fn filter(&self, data: &DataHub) -> FilterResult;
 }
 

@@ -127,22 +127,22 @@ pub enum FilterConf {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "@type")]
 pub enum PipeConf {
-    /// Just transform received message into send message type
     Transform,
-    /// Sets static text on send message. On media content this will set "caption", otherwise "text"
+    Format {
+        template: String,
+    },
     StaticText {
         #[serde(default)]
         formatted_text: FormattedText,
     },
-    /// Sets static photo on send message
-    StaticPhoto { path: String },
-    /// Search and replace texts on send message
+    StaticPhoto {
+        path: String,
+    },
     Replace {
         search: Vec<String>,
         #[serde(default)]
         replace: String,
     },
-    /// Search and replace texts with regular expression
     ReplaceRegexp {
         search: String,
         #[serde(default)]

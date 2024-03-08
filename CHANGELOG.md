@@ -1,5 +1,7 @@
 CHANGELOG
 ===
+## v0.6.0
+* new pipe - `Format`
 ## v0.5.0
 * new pipe - `StaticPhoto`
 ## v0.4.0

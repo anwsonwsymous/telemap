@@ -1,6 +1,8 @@
 use crate::config::PipeConf;
 use crate::processing::data::DataHub;
-use crate::processing::pipes::{Replace, ReplaceRegexp, StaticPhoto, StaticText, Transform};
+use crate::processing::pipes::{
+    Format, Replace, ReplaceRegexp, StaticPhoto, StaticText, Transform,
+};
 
 /// Pipe trait handles received messages and makes output builder (SendMessageBuilder)
 pub trait Pipe {
@@ -20,6 +22,9 @@ pub enum PipeType {
     Replace(Replace),
     /// Search and replace texts with regular expression
     ReplaceRegexp(ReplaceRegexp),
+    /// Format send message by provided template
+    #[cfg(feature = "templating")]
+    Format(Format),
 }
 
 /// Forward trait calls
@@ -31,6 +36,8 @@ impl Pipe for PipeType {
             Self::StaticPhoto(p) => p.handle(data),
             Self::Replace(p) => p.handle(data),
             Self::ReplaceRegexp(p) => p.handle(data),
+            #[cfg(feature = "templating")]
+            Self::Format(p) => p.handle(data),
         }
     }
 }
@@ -51,6 +58,11 @@ impl From<PipeConf> for PipeType {
 
             PipeConf::Replace { search, replace } => {
                 PipeType::Replace(Replace::builder().search(search).replace(replace).build())
+            }
+
+            #[cfg(feature = "templating")]
+            PipeConf::Format { template } => {
+                PipeType::Format(Format::builder().template(template).build())
             }
 
             PipeConf::ReplaceRegexp {
