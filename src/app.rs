@@ -1,5 +1,6 @@
 use crate::config::{Configs, IdMapConf, PipelineConf};
 use crate::processing::Pipeline;
+use colored::Colorize;
 use rust_tdlib::client::tdlib_client::TdJson;
 use rust_tdlib::client::{Client, ClientState, SignalAuthStateHandler, Worker};
 use rust_tdlib::tdjson;
@@ -41,6 +42,8 @@ impl From<Configs> for App {
 impl App {
     /// Entrypoint
     pub async fn start(&mut self) {
+        println!("Application State on start: {:?}", self);
+
         // Set log level
         self.set_log_level();
 
@@ -122,26 +125,40 @@ impl App {
                             .pipelines_index
                             .find(source_chat_id, dest_chat_id)
                             .unwrap_or_else(|_| {
-                                log::warn!("No pipelines found for source {} to destination {}, using default.", source_chat_id, dest_chat_id);
+                                println!(
+                                    "{} {} {}",
+                                    "No pipelines found for source + destination".yellow(),
+                                    source_chat_id,
+                                    dest_chat_id
+                                );
                                 &default_pipeline
                             });
 
-                        log::info!("Pipelines found for received message: {:?}", pipelines);
+                        println!(
+                            "{}:{:?}",
+                            "Pipelines for received message".green(),
+                            pipelines
+                        );
 
                         for pipeline in pipelines {
-                            match pipeline.handle(new_message.clone()) {
+                            match pipeline.handle(new_message.clone()).await {
                                 Ok(output_message_content) => {
                                     let send_message = SendMessage::builder()
                                         .input_message_content(output_message_content)
                                         .chat_id(*dest_chat_id)
                                         .build();
                                     if let Err(e) = client.send_message(send_message).await {
-                                        log::error!("Message not sent to {}: {}", dest_chat_id, e);
+                                        println!(
+                                            "{} {}: {}",
+                                            "Message not sent to".red(),
+                                            dest_chat_id,
+                                            e
+                                        );
                                     } else {
-                                        log::debug!("Message sent to {}", dest_chat_id);
+                                        println!("{}: {}", "Message sent to".green(), dest_chat_id);
                                     }
                                 }
-                                Err(e) => log::error!("Error handling pipeline for message: {}", e),
+                                Err(e) => println!("{}: {:?}", "Error in Pipeline handle".red(), e),
                             }
                         }
                     }

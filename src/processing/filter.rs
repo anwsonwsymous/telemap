@@ -10,7 +10,7 @@ pub type FilterResult = Result<(), ()>;
 
 /// Trait to filter received messages before mapping
 pub trait Filter {
-    fn filter(&self, data: &DataHub) -> FilterResult;
+    async fn filter(&self, data: &DataHub) -> FilterResult;
 }
 
 #[derive(Debug, Clone)]
@@ -50,24 +50,24 @@ pub enum FilterType {
 }
 
 impl Filter for FilterType {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         match self {
-            Self::Incoming(f) => f.filter(data),
-            Self::Counter(f) => f.filter(data),
-            Self::Text(f) => f.filter(data),
-            Self::Video(f) => f.filter(data),
-            Self::Photo(f) => f.filter(data),
-            Self::Document(f) => f.filter(data),
-            Self::Animation(f) => f.filter(data),
-            Self::AnyFile(f) => f.filter(data),
-            Self::FileSize(f) => f.filter(data),
-            Self::Duration(f) => f.filter(data),
-            Self::TextLength(f) => f.filter(data),
-            Self::Regexp(f) => f.filter(data),
-            Self::WhiteList(f) => f.filter(data),
-            Self::BlackList(f) => f.filter(data),
+            Self::Incoming(f) => f.filter(data).await,
+            Self::Counter(f) => f.filter(data).await,
+            Self::Text(f) => f.filter(data).await,
+            Self::Video(f) => f.filter(data).await,
+            Self::Photo(f) => f.filter(data).await,
+            Self::Document(f) => f.filter(data).await,
+            Self::Animation(f) => f.filter(data).await,
+            Self::AnyFile(f) => f.filter(data).await,
+            Self::FileSize(f) => f.filter(data).await,
+            Self::Duration(f) => f.filter(data).await,
+            Self::TextLength(f) => f.filter(data).await,
+            Self::Regexp(f) => f.filter(data).await,
+            Self::WhiteList(f) => f.filter(data).await,
+            Self::BlackList(f) => f.filter(data).await,
             #[cfg(feature = "storage")]
-            Self::Unique(f) => f.filter(data),
+            Self::Unique(f) => f.filter(data).await,
         }
     }
 }

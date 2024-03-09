@@ -18,7 +18,7 @@ impl Replace {
 }
 
 impl Pipe for Replace {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         if let Some(m) = &data.output {
             if let Some(formatted_text) = find_output_message_text(m) {
                 let mut replaced_text = formatted_text.text().to_owned();
@@ -68,18 +68,16 @@ mod tests {
     use crate::processing::test_helpers::{formatted_text_example, transformed_data_example};
     use rust_tdlib::types::InputMessageContent;
 
-    #[test]
-    fn test_replace() {
-        let mut data = transformed_data_example(Some("Search Search".to_string()));
+    #[tokio::test]
+    async fn test_replace() {
+        let mut data = transformed_data_example(Some("Search Search".to_string())).await;
         let success_text = formatted_text_example(Some("Replaced Replaced".to_string()));
         let pipe = PipeType::from(PipeConf::Replace {
             search: vec!["Search".to_string()],
             replace: "Replaced".to_string(),
         });
 
-        pipe.handle(&mut data);
-
-        println!("{:?}", pipe);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
@@ -89,18 +87,16 @@ mod tests {
         assert_eq!(data_text.text(), success_text.text());
     }
 
-    #[test]
-    fn test_replace_multiple() {
-        let mut data = transformed_data_example(Some("Search1 Search2".to_string()));
+    #[tokio::test]
+    async fn test_replace_multiple() {
+        let mut data = transformed_data_example(Some("Search1 Search2".to_string())).await;
         let success_text = formatted_text_example(Some("Replaced Replaced".to_string()));
         let pipe = PipeType::from(PipeConf::Replace {
             search: vec!["Search1".to_string(), "Search2".to_string()],
             replace: "Replaced".to_string(),
         });
 
-        pipe.handle(&mut data);
-
-        println!("{:?}", pipe);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),

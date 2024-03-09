@@ -51,35 +51,41 @@ impl Default for Pipeline {
 
 impl From<PipelineConf> for Pipeline {
     fn from(pipeline_conf: PipelineConf) -> Self {
-        Pipeline {
+        let mut pipeline = Self {
             name: pipeline_conf.name,
-            filters: pipeline_conf
-                .filters
-                .into_iter()
-                .map(FilterType::from)
-                .collect(),
-            pipes: pipeline_conf
-                .pipes
-                .into_iter()
-                .map(PipeType::from)
-                .collect(),
-        }
+            ..Default::default()
+        };
+
+        // Append filters from PipelineConf to the default ones
+        pipeline
+            .filters
+            .extend(pipeline_conf.filters.into_iter().map(FilterType::from));
+
+        // Append pipes from PipelineConf to the default ones
+        pipeline
+            .pipes
+            .extend(pipeline_conf.pipes.into_iter().map(PipeType::from));
+
+        pipeline
     }
 }
 
 impl Pipeline {
-    pub fn handle(&self, input: UpdateNewMessage) -> PipelineResult {
+    pub async fn handle(&self, input: UpdateNewMessage) -> PipelineResult {
         let mut data = DataHub::new(input);
 
         // First filter data
-        self.filters.iter().try_for_each(|filter| {
+        for filter in &self.filters {
             filter
                 .filter(&data)
-                .map_err(|_| PipelineError::FilterError(format!("{:?}", filter)))
-        })?;
+                .await
+                .map_err(|_| PipelineError::FilterError(format!("{:?}", filter)))?;
+        }
 
         // Then make output (run pipes)
-        self.pipes.iter().for_each(|pipe| pipe.handle(&mut data));
+        for pipe in &self.pipes {
+            pipe.handle(&mut data).await;
+        }
 
         data.output.ok_or(PipelineError::OutputError(format!(
             "No output generated in pipeline {}",
@@ -93,14 +99,14 @@ mod tests {
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
     use crate::processing::Pipeline;
 
-    #[test]
-    fn test_default() {
+    #[tokio::test]
+    async fn test_default() {
         // This must map any incoming message as it is
         let pipeline = Pipeline::default();
         let success_message =
             message_example(sender_user_example(), MessageMock::Text(None), false);
         let fail_message = message_example(sender_user_example(), MessageMock::Text(None), true);
-        assert!(pipeline.handle(success_message).is_ok());
-        assert!(pipeline.handle(fail_message).is_err());
+        assert!(pipeline.handle(success_message).await.is_ok());
+        assert!(pipeline.handle(fail_message).await.is_err());
     }
 }

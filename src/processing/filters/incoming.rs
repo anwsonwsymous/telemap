@@ -6,7 +6,7 @@ use crate::processing::filter::{Filter, FilterResult};
 pub struct Incoming;
 
 impl Filter for Incoming {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         if !data.input.message().is_outgoing() {
             Ok(())
         } else {
@@ -22,8 +22,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_incoming() {
+    #[tokio::test]
+    async fn test_incoming() {
         let outgoing_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(None),
@@ -37,7 +37,7 @@ mod tests {
 
         let filter = FilterType::from(FilterConf::Incoming);
 
-        assert_eq!(Ok(()), filter.filter(&incoming_data));
-        assert_eq!(Err(()), filter.filter(&outgoing_data));
+        assert_eq!(Ok(()), filter.filter(&incoming_data).await);
+        assert_eq!(Err(()), filter.filter(&outgoing_data).await);
     }
 }

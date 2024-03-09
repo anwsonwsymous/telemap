@@ -18,7 +18,7 @@ impl Duration {
 }
 
 impl Filter for Duration {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         let duration = find_input_message_duration(data.input.message());
 
         match cmp(&self.op, &duration.ok_or(())?, &self.duration) {
@@ -55,8 +55,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_duration() {
+    #[tokio::test]
+    async fn test_duration() {
         // 10 seconds
         let animation = DataHub::new(message_example(
             sender_user_example(),
@@ -79,10 +79,10 @@ mod tests {
             op: ">=".to_string(),
         });
 
-        assert_eq!(Ok(()), ten_seconds_filter.filter(&animation));
-        assert_eq!(Err(()), ten_seconds_filter.filter(&video));
+        assert_eq!(Ok(()), ten_seconds_filter.filter(&animation).await);
+        assert_eq!(Err(()), ten_seconds_filter.filter(&video).await);
 
-        assert_eq!(Ok(()), minute_filter.filter(&video));
-        assert_eq!(Err(()), minute_filter.filter(&animation));
+        assert_eq!(Ok(()), minute_filter.filter(&video).await);
+        assert_eq!(Err(()), minute_filter.filter(&animation).await);
     }
 }

@@ -19,7 +19,7 @@ impl FileSize {
 }
 
 impl Filter for FileSize {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         let file = find_input_message_file(data.input.message());
 
         match cmp(
@@ -60,8 +60,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_file_size() {
+    #[tokio::test]
+    async fn test_file_size() {
         // 10mb video
         let video = DataHub::new(message_example(
             sender_user_example(),
@@ -86,8 +86,8 @@ mod tests {
             op: ">=".to_string(),
         });
 
-        assert_eq!(Ok(()), filter.filter(&video));
-        assert_eq!(Err(()), filter.filter(&photo));
-        assert_eq!(Ok(()), filter.filter(&document));
+        assert_eq!(Ok(()), filter.filter(&video).await);
+        assert_eq!(Err(()), filter.filter(&photo).await);
+        assert_eq!(Ok(()), filter.filter(&document).await);
     }
 }

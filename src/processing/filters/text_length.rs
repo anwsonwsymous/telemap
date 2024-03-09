@@ -18,7 +18,7 @@ impl TextLength {
 }
 
 impl Filter for TextLength {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         let text = find_input_message_text(data.input.message());
 
         match cmp(&self.op, &text.ok_or(())?.len(), &(self.len as usize)) {
@@ -55,8 +55,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_text_length() {
+    #[tokio::test]
+    async fn test_text_length() {
         // 19 symbols
         let long_message_data = DataHub::new(message_example(
             sender_user_example(),
@@ -84,15 +84,15 @@ mod tests {
         });
 
         // Shorter than 10 symbols
-        assert_eq!(Ok(()), less_filter.filter(&short_message_data));
-        assert_eq!(Err(()), less_filter.filter(&long_message_data));
+        assert_eq!(Ok(()), less_filter.filter(&short_message_data).await);
+        assert_eq!(Err(()), less_filter.filter(&long_message_data).await);
 
         // Equals to 5 symbols
-        assert_eq!(Ok(()), eq_filter.filter(&short_message_data));
-        assert_eq!(Err(()), eq_filter.filter(&long_message_data));
+        assert_eq!(Ok(()), eq_filter.filter(&short_message_data).await);
+        assert_eq!(Err(()), eq_filter.filter(&long_message_data).await);
 
         // Greater than 5 symbols
-        assert_eq!(Ok(()), greater_filter.filter(&long_message_data));
-        assert_eq!(Err(()), greater_filter.filter(&short_message_data));
+        assert_eq!(Ok(()), greater_filter.filter(&long_message_data).await);
+        assert_eq!(Err(()), greater_filter.filter(&short_message_data).await);
     }
 }

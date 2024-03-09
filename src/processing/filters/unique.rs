@@ -10,7 +10,7 @@ use std::sync::Mutex;
 pub struct Unique;
 
 impl Filter for Unique {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         lazy_static::lazy_static! {
             static ref STORE: Mutex<PickleDb> = {
                 let path = Path::new("storage/key-value.db");
@@ -47,8 +47,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_unique() {
+    #[tokio::test]
+    async fn test_unique() {
         let message_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some("some message".to_string())),
@@ -57,8 +57,8 @@ mod tests {
 
         let unique_filter = FilterType::from(FilterConf::Unique);
 
-        let _ = unique_filter.filter(&message_data);
+        let _ = unique_filter.filter(&message_data).await;
         // Second time should not pass
-        assert_eq!(Err(()), unique_filter.filter(&message_data));
+        assert_eq!(Err(()), unique_filter.filter(&message_data).await);
     }
 }

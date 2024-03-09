@@ -18,7 +18,7 @@ impl Regexp {
 }
 
 impl Filter for Regexp {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         let text = find_input_message_text(data.input.message()).ok_or(())?;
 
         match self.pattern.as_ref().ok_or(())?.is_match(text) {
@@ -51,8 +51,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_regexp() {
+    #[tokio::test]
+    async fn test_regexp() {
         let example_message_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some("example".to_string())),
@@ -71,10 +71,10 @@ mod tests {
             exp: "^[0-9]+$".to_string(),
         });
 
-        assert_eq!(Ok(()), example_filter.filter(&example_message_data));
-        assert_eq!(Err(()), example_filter.filter(&number_message_data));
+        assert_eq!(Ok(()), example_filter.filter(&example_message_data).await);
+        assert_eq!(Err(()), example_filter.filter(&number_message_data).await);
 
-        assert_eq!(Ok(()), number_filter.filter(&number_message_data));
-        assert_eq!(Err(()), number_filter.filter(&example_message_data));
+        assert_eq!(Ok(()), number_filter.filter(&number_message_data).await);
+        assert_eq!(Err(()), number_filter.filter(&example_message_data).await);
     }
 }

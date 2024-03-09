@@ -18,7 +18,7 @@ impl Counter {
 }
 
 impl Filter for Counter {
-    fn filter(&self, _: &DataHub) -> FilterResult {
+    async fn filter(&self, _: &DataHub) -> FilterResult {
         match self.atomic.fetch_sub(1, Ordering::Relaxed) {
             0 => {
                 self.atomic.store(self.count, Ordering::Relaxed);
@@ -52,8 +52,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_counter() {
+    #[tokio::test]
+    async fn test_counter() {
         let data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(None),
@@ -63,8 +63,8 @@ mod tests {
         // This will pass only third message, first two must be ignored
         let filter = FilterType::from(FilterConf::Counter { count: 2 });
 
-        assert_eq!(Err(()), filter.filter(&data));
-        assert_eq!(Err(()), filter.filter(&data));
-        assert_eq!(Ok(()), filter.filter(&data));
+        assert_eq!(Err(()), filter.filter(&data).await);
+        assert_eq!(Err(()), filter.filter(&data).await);
+        assert_eq!(Ok(()), filter.filter(&data).await);
     }
 }

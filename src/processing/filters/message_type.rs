@@ -14,7 +14,7 @@ pub enum MessageType {
 }
 
 impl Filter for MessageType {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         let message_content = data.input.message().content();
 
         match self {
@@ -67,8 +67,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_file() {
+    #[tokio::test]
+    async fn test_file() {
         let success_data = vec![
             DataHub::new(message_example(
                 sender_user_example(),
@@ -100,14 +100,14 @@ mod tests {
         let filter = FilterType::from(FilterConf::AnyFile);
 
         for datum in &success_data {
-            assert_eq!(Ok(()), filter.filter(datum));
+            assert_eq!(Ok(()), filter.filter(datum).await);
         }
 
-        assert_eq!(Err(()), filter.filter(&fail_data));
+        assert_eq!(Err(()), filter.filter(&fail_data).await);
     }
 
-    #[test]
-    fn test_animation() {
+    #[tokio::test]
+    async fn test_animation() {
         let success_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Animation(None, 0, 0),
@@ -120,12 +120,12 @@ mod tests {
         ));
         let filter = FilterType::from(FilterConf::Animation);
 
-        assert_eq!(Ok(()), filter.filter(&success_data));
-        assert_eq!(Err(()), filter.filter(&fail_data));
+        assert_eq!(Ok(()), filter.filter(&success_data).await);
+        assert_eq!(Err(()), filter.filter(&fail_data).await);
     }
 
-    #[test]
-    fn test_video() {
+    #[tokio::test]
+    async fn test_video() {
         let success_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Video(None, 0, 0),
@@ -138,12 +138,12 @@ mod tests {
         ));
         let filter = FilterType::from(FilterConf::Video);
 
-        assert_eq!(Ok(()), filter.filter(&success_data));
-        assert_eq!(Err(()), filter.filter(&fail_data));
+        assert_eq!(Ok(()), filter.filter(&success_data).await);
+        assert_eq!(Err(()), filter.filter(&fail_data).await);
     }
 
-    #[test]
-    fn test_document() {
+    #[tokio::test]
+    async fn test_document() {
         let success_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Document(None, 0),
@@ -156,12 +156,12 @@ mod tests {
         ));
         let filter = FilterType::from(FilterConf::Document);
 
-        assert_eq!(Ok(()), filter.filter(&success_data));
-        assert_eq!(Err(()), filter.filter(&fail_data));
+        assert_eq!(Ok(()), filter.filter(&success_data).await);
+        assert_eq!(Err(()), filter.filter(&fail_data).await);
     }
 
-    #[test]
-    fn test_photo() {
+    #[tokio::test]
+    async fn test_photo() {
         let success_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Photo(None, 0),
@@ -174,12 +174,12 @@ mod tests {
         ));
         let filter = FilterType::from(FilterConf::Photo);
 
-        assert_eq!(Ok(()), filter.filter(&success_data));
-        assert_eq!(Err(()), filter.filter(&fail_data));
+        assert_eq!(Ok(()), filter.filter(&success_data).await);
+        assert_eq!(Err(()), filter.filter(&fail_data).await);
     }
 
-    #[test]
-    fn test_text() {
+    #[tokio::test]
+    async fn test_text() {
         let success_data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(None),
@@ -192,7 +192,7 @@ mod tests {
         ));
         let filter = FilterType::from(FilterConf::Text);
 
-        assert_eq!(Ok(()), filter.filter(&success_data));
-        assert_eq!(Err(()), filter.filter(&fail_data));
+        assert_eq!(Ok(()), filter.filter(&success_data).await);
+        assert_eq!(Err(()), filter.filter(&fail_data).await);
     }
 }

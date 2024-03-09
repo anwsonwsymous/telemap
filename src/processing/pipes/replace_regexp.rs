@@ -21,7 +21,7 @@ impl ReplaceRegexp {
 }
 
 impl Pipe for ReplaceRegexp {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         if let Some(m) = &data.output {
             if let Some(formatted_text) = find_output_message_text(m) {
                 let mut replaced_text = formatted_text.text().to_owned();
@@ -90,9 +90,9 @@ mod tests {
     use crate::processing::test_helpers::{formatted_text_example, transformed_data_example};
     use rust_tdlib::types::InputMessageContent;
 
-    #[test]
-    fn test_replace_regexp_all() {
-        let mut data = transformed_data_example(Some("World world word work".to_string()));
+    #[tokio::test]
+    async fn test_replace_regexp_all() {
+        let mut data = transformed_data_example(Some("World world word work".to_string())).await;
         let success_text =
             formatted_text_example(Some("replaced replaced replaced replaced".to_string()));
         let pipe = PipeType::from(PipeConf::ReplaceRegexp {
@@ -101,9 +101,7 @@ mod tests {
             all: true,
         });
 
-        pipe.handle(&mut data);
-
-        println!("{:?}", pipe);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
@@ -113,9 +111,9 @@ mod tests {
         assert_eq!(data_text.text(), success_text.text());
     }
 
-    #[test]
-    fn test_replace_regexp_first() {
-        let mut data = transformed_data_example(Some("World world word work".to_string()));
+    #[tokio::test]
+    async fn test_replace_regexp_first() {
+        let mut data = transformed_data_example(Some("World world word work".to_string())).await;
         let success_text = formatted_text_example(Some("replaced world word work".to_string()));
         let pipe = PipeType::from(PipeConf::ReplaceRegexp {
             search: r"[wW]or\S+".to_string(),
@@ -123,9 +121,7 @@ mod tests {
             all: false,
         });
 
-        pipe.handle(&mut data);
-
-        println!("{:?}", pipe);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),

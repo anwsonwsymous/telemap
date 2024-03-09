@@ -6,7 +6,7 @@ use crate::processing::pipes::{
 
 /// Pipe trait handles received messages and makes output builder (SendMessageBuilder)
 pub trait Pipe {
-    fn handle(&self, data: &mut DataHub);
+    async fn handle(&self, data: &mut DataHub);
 }
 
 #[derive(Debug, Clone)]
@@ -29,15 +29,15 @@ pub enum PipeType {
 
 /// Forward trait calls
 impl Pipe for PipeType {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         match self {
-            Self::Transform(p) => p.handle(data),
-            Self::StaticText(p) => p.handle(data),
-            Self::StaticPhoto(p) => p.handle(data),
-            Self::Replace(p) => p.handle(data),
-            Self::ReplaceRegexp(p) => p.handle(data),
+            Self::Transform(p) => p.handle(data).await,
+            Self::StaticText(p) => p.handle(data).await,
+            Self::StaticPhoto(p) => p.handle(data).await,
+            Self::Replace(p) => p.handle(data).await,
+            Self::ReplaceRegexp(p) => p.handle(data).await,
             #[cfg(feature = "templating")]
-            Self::Format(p) => p.handle(data),
+            Self::Format(p) => p.handle(data).await,
         }
     }
 }

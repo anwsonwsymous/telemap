@@ -7,7 +7,7 @@ use crate::processing::transform;
 pub struct Transform;
 
 impl Pipe for Transform {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         // All type of messages (text, video, photo, animation, etc...)
         if let Ok(new_message) = transform(data.input.message()) {
             data.output = Some(new_message);
@@ -19,9 +19,9 @@ impl Pipe for Transform {
 mod tests {
     use crate::processing::test_helpers::transformed_data_example;
 
-    #[test]
-    fn test_transform() {
-        let data = transformed_data_example(None);
+    #[tokio::test]
+    async fn test_transform() {
+        let data = transformed_data_example(None).await;
 
         assert!(data.output.is_some());
     }

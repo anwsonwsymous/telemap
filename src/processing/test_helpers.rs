@@ -106,7 +106,7 @@ pub(crate) fn message_example(
         .build()
 }
 
-pub(crate) fn transformed_data_example(message: Option<String>) -> DataHub {
+pub(crate) async fn transformed_data_example(message: Option<String>) -> DataHub {
     let mut data = DataHub::new(message_example(
         sender_user_example(),
         MessageMock::Text(message),
@@ -114,6 +114,6 @@ pub(crate) fn transformed_data_example(message: Option<String>) -> DataHub {
     ));
 
     let pipe = PipeType::from(PipeConf::Transform);
-    pipe.handle(&mut data);
+    pipe.handle(&mut data).await;
     data
 }

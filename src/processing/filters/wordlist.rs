@@ -24,7 +24,7 @@ impl WordList {
 }
 
 impl Filter for WordList {
-    fn filter(&self, data: &DataHub) -> FilterResult {
+    async fn filter(&self, data: &DataHub) -> FilterResult {
         let text = find_input_message_text(data.input.message())
             .map(|s| s.to_lowercase())
             .unwrap_or_default();
@@ -68,8 +68,8 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
-    #[test]
-    fn test_white_list() {
+    #[tokio::test]
+    async fn test_white_list() {
         let message_data1 = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some("hello".to_string())),
@@ -89,13 +89,13 @@ mod tests {
             words: vec!["hello".to_string(), "world".to_string()],
         });
 
-        assert_eq!(Ok(()), filter.filter(&message_data1));
-        assert_eq!(Ok(()), filter.filter(&message_data2));
-        assert_eq!(Err(()), filter.filter(&message_data3));
+        assert_eq!(Ok(()), filter.filter(&message_data1).await);
+        assert_eq!(Ok(()), filter.filter(&message_data2).await);
+        assert_eq!(Err(()), filter.filter(&message_data3).await);
     }
 
-    #[test]
-    fn test_black_list() {
+    #[tokio::test]
+    async fn test_black_list() {
         let message_data1 = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some("hello".to_string())),
@@ -115,8 +115,8 @@ mod tests {
             words: vec!["hello".to_string(), "world".to_string()],
         });
 
-        assert_eq!(Err(()), filter.filter(&message_data1));
-        assert_eq!(Err(()), filter.filter(&message_data2));
-        assert_eq!(Ok(()), filter.filter(&message_data3));
+        assert_eq!(Err(()), filter.filter(&message_data1).await);
+        assert_eq!(Err(()), filter.filter(&message_data2).await);
+        assert_eq!(Ok(()), filter.filter(&message_data3).await);
     }
 }

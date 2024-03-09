@@ -19,7 +19,7 @@ impl Format {
 }
 
 impl Pipe for Format {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         if let Some(m) = &data.output {
             if let Some(formatted_text) = find_output_message_text(m) {
                 // Available context variables: message, todo:source, todo:source_link
@@ -58,15 +58,15 @@ mod tests {
     use crate::processing::test_helpers::{formatted_text_example, transformed_data_example};
     use rust_tdlib::types::InputMessageContent;
 
-    #[test]
-    fn test_format() {
-        let mut data = transformed_data_example(Some("Original message".to_string()));
+    #[tokio::test]
+    async fn test_format() {
+        let mut data = transformed_data_example(Some("Original message".to_string())).await;
         let success_text = formatted_text_example(Some("Start `Original message` End".to_string()));
         let pipe = PipeType::from(PipeConf::Format {
             template: "Start `{message}` End".to_string(),
         });
 
-        pipe.handle(&mut data);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),

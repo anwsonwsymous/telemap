@@ -17,7 +17,7 @@ impl StaticText {
 }
 
 impl Pipe for StaticText {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         data.set_output_text(self.formatted_text.clone());
     }
 }
@@ -51,7 +51,7 @@ impl StaticPhoto {
 }
 
 impl Pipe for StaticPhoto {
-    fn handle(&self, data: &mut DataHub) {
+    async fn handle(&self, data: &mut DataHub) {
         data.output = Some(transform_output_to_photo_message(
             data.output.as_ref().unwrap(),
             &self.path,
@@ -81,14 +81,14 @@ mod tests {
     use crate::processing::test_helpers::{formatted_text_example, transformed_data_example};
     use rust_tdlib::types::InputMessageContent;
 
-    #[test]
-    fn test_static_text() {
-        let mut data = transformed_data_example(None);
+    #[tokio::test]
+    async fn test_static_text() {
+        let mut data = transformed_data_example(None).await;
         let success_formatted_text = formatted_text_example(Some("Test Text".to_string()));
         let pipe = PipeType::from(PipeConf::StaticText {
             formatted_text: success_formatted_text.clone(),
         });
-        pipe.handle(&mut data);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessageText(m)) => m.text().clone(),
@@ -98,14 +98,14 @@ mod tests {
         assert_eq!(success_formatted_text.text(), data_text.text());
     }
 
-    #[test]
-    fn test_static_photo() {
-        let mut data = transformed_data_example(Some("Something".to_string()));
+    #[tokio::test]
+    async fn test_static_photo() {
+        let mut data = transformed_data_example(Some("Something".to_string())).await;
         let success_formatted_text = formatted_text_example(Some("Something".to_string()));
         let pipe = PipeType::from(PipeConf::StaticPhoto {
             path: "resources/photo.jpg".to_string(),
         });
-        pipe.handle(&mut data);
+        pipe.handle(&mut data).await;
 
         let data_text = match data.output {
             Some(InputMessageContent::InputMessagePhoto(m)) => m.caption().clone(),
