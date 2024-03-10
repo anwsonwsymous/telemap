@@ -1,3 +1,5 @@
+#[cfg(feature = "ai")]
+pub mod ai;
 pub mod counter;
 pub mod duration;
 pub mod file_size;
@@ -9,6 +11,8 @@ pub mod text_length;
 pub mod unique;
 pub mod wordlist;
 
+#[cfg(feature = "ai")]
+pub(crate) use ai::Context;
 pub(crate) use counter::Counter;
 pub(crate) use duration::Duration;
 pub(crate) use file_size::FileSize;

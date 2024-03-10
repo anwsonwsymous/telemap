@@ -1,5 +1,7 @@
 CHANGELOG
 ===
+## v0.7.0
+* new filter - `Context` filter with `openai` models
 ## v0.6.0
 * new pipe - `Format`
 ## v0.5.0

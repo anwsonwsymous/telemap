@@ -15,8 +15,8 @@ rust-tdlib = "0.4.1"
 lazy_static = "1.4.0"
 async-trait = { version = "0.1", optional = true }
 tokio = { version = "1.26.0", features = ["macros", "rt-multi-thread", "sync", "time"] }
-log = { version = "0.4" }
-env_logger = "0.8"
+log = "0.4"
+env_logger = "0.11.3"
 colored = "2.0.0"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
@@ -26,8 +26,10 @@ rpassword = "7.0.0"
 pickledb = { version = "0.5.1", optional = true }
 md5 = { version = "0.7.0", optional = true }
 strfmt = { version = "0.2.4", optional = true }
+async-openai = { version = "0.19.0", optional = true }
 
 [features]
-default = ["storage", "templating"]
+default = ["storage", "templating", "ai"]
 storage = ["dep:pickledb", "dep:md5"]
 templating = ["dep:strfmt"]
+ai = ["dep:async-openai"]

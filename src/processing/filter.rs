@@ -1,8 +1,8 @@
 use crate::config::FilterConf;
 use crate::processing::data::DataHub;
 use crate::processing::filters::{
-    Counter, Duration, FileSize, Incoming, MessageType, Regexp, TextLength, Unique, WordList,
-    WordListType,
+    Context, Counter, Duration, FileSize, Incoming, MessageType, Regexp, TextLength, Unique,
+    WordList, WordListType,
 };
 
 /// Filters return Ok/Err instead of true/false
@@ -47,6 +47,9 @@ pub enum FilterType {
     /// Filter duplicates, pass unique messages
     #[cfg(feature = "storage")]
     Unique(Unique),
+    /// Filter by context using LLM
+    #[cfg(feature = "ai")]
+    Context(Context),
 }
 
 impl Filter for FilterType {
@@ -68,6 +71,8 @@ impl Filter for FilterType {
             Self::BlackList(f) => f.filter(data).await,
             #[cfg(feature = "storage")]
             Self::Unique(f) => f.filter(data).await,
+            #[cfg(feature = "ai")]
+            Self::Context(f) => f.filter(data).await,
         }
     }
 }
@@ -125,6 +130,21 @@ impl From<FilterConf> for FilterType {
 
             #[cfg(feature = "storage")]
             FilterConf::Unique => FilterType::Unique(Unique),
+
+            #[cfg(feature = "ai")]
+            FilterConf::Context {
+                model,
+                title,
+                description,
+                guidelines,
+            } => FilterType::Context(
+                Context::builder()
+                    .model(model)
+                    .title(title)
+                    .description(description)
+                    .guidelines(guidelines)
+                    .build(),
+            ),
         }
     }
 }

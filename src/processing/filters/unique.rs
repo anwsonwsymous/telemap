@@ -5,24 +5,24 @@ use pickledb::{PickleDb, PickleDbDumpPolicy};
 use std::path::Path;
 use std::sync::Mutex;
 
+lazy_static::lazy_static! {
+    static ref STORE: Mutex<PickleDb> = {
+        let path = Path::new("storage/key-value.db");
+
+        Mutex::new(if path.exists() {
+            PickleDb::load_json(path, PickleDbDumpPolicy::AutoDump).expect("DB error")
+        } else {
+            PickleDb::new_json(path, PickleDbDumpPolicy::AutoDump)
+        })
+    };
+}
+
 /// Filter duplicates, pass unique messages
 #[derive(Debug, Default, Clone)]
 pub struct Unique;
 
 impl Filter for Unique {
     async fn filter(&self, data: &DataHub) -> FilterResult {
-        lazy_static::lazy_static! {
-            static ref STORE: Mutex<PickleDb> = {
-                let path = Path::new("storage/key-value.db");
-
-                Mutex::new(if path.exists() {
-                    PickleDb::load_json(path, PickleDbDumpPolicy::AutoDump).expect("DB error")
-                } else {
-                    PickleDb::new_json(path, PickleDbDumpPolicy::AutoDump)
-                })
-            };
-        }
-
         // TODO: For other messages then text, check uniqueness by file_id
         // TODO: Multiple unique filters for different pipelines with different PREFIX_KEY
 

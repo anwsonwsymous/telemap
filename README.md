@@ -51,6 +51,7 @@ Steps below are required for both options
             --volume $(pwd)/telegram_database:/app/telegram_database \
             --volume $(pwd)/config:/config \
             --volume $(pwd)/.env:/app/.env \
+            --env-file $(pwd)/.env
             --name telemap-app \
             anwsonwsymous/telemap:slim -c /config/echo.json
   ```
@@ -110,6 +111,7 @@ docker run \
           --name telemap-dev \
           --entrypoint /bin/bash \
           --volume $(pwd):/app \
+          --env-file $(pwd)/.env
           anwsonwsymous/telemap:slim
 # Run with cargo
 cargo run -- -c /app/config/test.json

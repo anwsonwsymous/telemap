@@ -83,6 +83,10 @@ pub struct PipelineConf {
     pub pipes: Vec<PipeConf>,
 }
 
+fn default_model() -> String {
+    "gpt-3.5-turbo".to_string()
+}
+
 /// All available Filters
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "@type")]
@@ -121,6 +125,16 @@ pub enum FilterConf {
     },
     #[cfg(feature = "storage")]
     Unique,
+    #[cfg(feature = "ai")]
+    Context {
+        title: String,
+        #[serde(default = "default_model")]
+        model: String,
+        #[serde(default)]
+        description: String,
+        #[serde(default)]
+        guidelines: String,
+    },
 }
 
 /// All available Pipes

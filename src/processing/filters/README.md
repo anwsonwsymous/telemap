@@ -17,3 +17,17 @@
 | **WhiteList**   | `{"@type":"WhiteList","words":["hello","world"]}` | _This filter passes when message matches any of provided words_  | -         |
 | **BlackList**   | `{"@type":"BlackList","words":["hello","world"]}` | _This filter rejects when message matches any of provided words_ | -         |
 | **Unique**      | `{"@type":"Unique"}`                              | _Pass only unique messages_                                      | `storage` |
+| **Context**     | [Example](#context-filter)                        | _Filter by context using openai LLM models_                      | `ai`      |
+
+
+### Context filter 
+
+```json
+{
+  "@type": "Context",
+  "model": "gpt-4-turbo-preview",
+  "title": "Crypto/Trading/IT/AI",
+  "description": "Crypto/Trading/IT/AI related news channel",
+  "guidelines": "1. No hate speech or discriminatory language.\n2. Messages must be relevant to the CONTEXT.\n3. No spam or promotional content."
+}
+```
