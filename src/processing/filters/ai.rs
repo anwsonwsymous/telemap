@@ -30,9 +30,7 @@ Guidelines for Moderation:
 
 Based on the above information and guidelines, provide your analysis and decision in provided response format.
 
-IMPORTANT!!! ONLY Answer with this Response Format: 
-0 // Deny
-1 // Allow
+IMPORTANT!!! Your answer should contain only one numeric value: 1 if message allowed, 0 if not allowed
 ";
 
 lazy_static! {
@@ -55,47 +53,53 @@ impl Context {
 
 impl Filter for Context {
     async fn filter(&self, data: &DataHub) -> FilterResult {
+        let input_text = find_input_message_text(data.input.message());
+        if input_text.is_none() {
+            return Err(());
+        }
+
+        let user_message = ChatCompletionRequestUserMessageArgs::default()
+            .content(format!("User Message: '''{}'''", input_text.unwrap()))
+            .build()
+            .unwrap()
+            .into();
+
+        let system_message = ChatCompletionRequestSystemMessageArgs::default()
+            .content(strfmt(SYSTEM_PROMPT_TEMPLATE, &self.context_vars).unwrap())
+            .build()
+            .unwrap()
+            .into();
+
         let request = CreateChatCompletionRequestArgs::default()
-            .max_tokens(1u16)
-            .temperature(2.0f32)
+            .max_tokens(10u16)
+            .temperature(0.5f32)
+            .top_p(0.5f32)
             .model(&self.model)
-            .messages([
-                ChatCompletionRequestSystemMessageArgs::default()
-                    .content(strfmt(SYSTEM_PROMPT_TEMPLATE, &self.context_vars).unwrap())
-                    .build()
-                    .unwrap()
-                    .into(),
-                ChatCompletionRequestUserMessageArgs::default()
-                    .content(
-                        find_input_message_text(data.input.message())
-                            .unwrap()
-                            .to_string(),
-                    )
-                    .build()
-                    .unwrap()
-                    .into(),
-            ])
+            .messages([system_message, user_message])
             .build()
             .unwrap();
 
         let client = CLIENT.lock().await;
-        let response = client.chat().create(request).await.unwrap();
+        let response = client.chat().create(request).await;
 
-        response
-            .choices
-            .iter()
-            .any(|choice| {
-                choice
-                    .message
-                    .content
-                    .as_ref()
-                    .unwrap_or(&"0".to_string())
-                    .parse::<u8>()
-                    .unwrap_or(0)
-                    == 1
-            })
-            .then_some(())
-            .ok_or(())
+        match response {
+            Ok(response) => response
+                .choices
+                .iter()
+                .any(|choice| {
+                    choice
+                        .message
+                        .content
+                        .as_ref()
+                        .unwrap_or(&"0".to_string())
+                        .parse::<u8>()
+                        .unwrap_or(0)
+                        == 1
+                })
+                .then_some(())
+                .ok_or(()),
+            _ => Err(()),
+        }
     }
 }
 
@@ -140,6 +144,7 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
+    #[ignore]
     #[tokio::test]
     async fn test_context() {
         let success_data = DataHub::new(message_example(

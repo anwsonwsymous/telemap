@@ -5,8 +5,8 @@ use rust_tdlib::client::tdlib_client::TdJson;
 use rust_tdlib::client::{Client, ClientState, SignalAuthStateHandler, Worker};
 use rust_tdlib::tdjson;
 use rust_tdlib::types::{
-    AuthorizationState, GetChat, OptionValue, OptionValueBoolean, SendMessage, SetOption,
-    TdlibParameters, Update,
+    AuthorizationState, ChatList, GetChat, LoadChats, OptionValue, OptionValueBoolean, SendMessage,
+    SetOption, TdlibParameters, Update,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
@@ -42,7 +42,7 @@ impl From<Configs> for App {
 impl App {
     /// Entrypoint
     pub async fn start(&mut self) {
-        println!("Application State on start: {:?}", self);
+        println!("{}: {:?}", "Application State on start".blue(), self);
 
         // Set log level
         self.set_log_level();
@@ -59,7 +59,7 @@ impl App {
             .unwrap();
 
         // Start worker
-        println!("Starting worker...");
+        println!("{}", "Starting worker...".blue());
         let mut waiter = worker.start();
 
         // Create client and main channel
@@ -76,7 +76,7 @@ impl App {
         auth_sender.send("".to_string()).await.unwrap(); // empty encryption key
         auth_sender.send("".to_string()).await.unwrap(); // hack for forcing wait_auth_state_change work
 
-        println!("Authentication...");
+        println!("{}", "Authentication...".blue());
         let client = tokio::select! {
             c = worker.bind_client(client) => {
                 match c {
@@ -90,7 +90,11 @@ impl App {
         self.process_authentication(&worker, &client, &auth_sender)
             .await;
 
-        println!("Setting options, loading chats and waiting for updates...");
+        println!(
+            "{}",
+            "Setting options, loading chats and waiting for updates...".blue()
+        );
+
         tokio::join!(
             self.set_client_options(&client),
             self.load_chats(&client, &self.mappings_index),
@@ -113,6 +117,8 @@ impl App {
 
     /// Handle incoming updates from Telegram
     async fn handle_updates(&self, client: &Client<TdJson>, mut receiver: Receiver<Box<Update>>) {
+        println!("{}...", "handle_updates started!".blue());
+
         let default_pipeline = vec![Pipeline::default()];
 
         while let Some(update) = receiver.recv().await {
@@ -274,99 +280,76 @@ impl App {
 
     /// Set telegram options
     async fn set_client_options(&self, client: &Client<TdJson>) {
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("always_parse_markdown")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("always parse markdown option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("disable_animated_emoji")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("disable animated emoji option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("disable_persistent_network_statistics")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("disable persistent network statistics option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("ignore_inline_thumbnails")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("ignore inline thumbnails option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("is_location_visible")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(false).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("location option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("online")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(false).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("online option set...");
+        println!("{}", "set_client_options started!".blue());
 
-        println!("Set Options Finished....");
+        let options = [
+            ("always_parse_markdown", true),
+            ("disable_animated_emoji", true),
+            ("disable_persistent_network_statistics", true),
+            ("ignore_inline_thumbnails", true),
+            ("is_location_visible", false),
+            ("online", false),
+        ];
+
+        for (name, value) in options.iter() {
+            let result = client
+                .set_option(
+                    SetOption::builder()
+                        .name(name)
+                        .value(OptionValue::Boolean(
+                            OptionValueBoolean::builder().value(*value).build(),
+                        ))
+                        .build(),
+                )
+                .await;
+
+            match result {
+                Ok(_) => println!("{} {}...", name.yellow(), "option set".green()),
+                Err(_) => eprintln!("{} {}...", "Failed to set option".red(), name),
+            }
+        }
+
+        println!("{}", "set_client_options finished!".blue());
     }
 
     /// Get chats from telegram.
     async fn load_chats(&self, client: &Client<TdJson>, mappings_index: &MappingsIndex) {
-        let mut chats_set = HashSet::new();
+        println!("{}...", "load_chats started!".blue());
 
-        // Make unique destination chats
-        for (_, dests) in mappings_index.iter() {
-            for dest in dests {
-                chats_set.insert(dest);
-            }
+        client
+            .load_chats(
+                LoadChats::builder()
+                    .chat_list(ChatList::default())
+                    .limit(100i32)
+                    .build(),
+            )
+            .await
+            .unwrap();
+
+        // Collect unique chat IDs from both source and destination chats
+        let chats_set: HashSet<i64> = mappings_index
+            .iter()
+            .flat_map(|(src, dests)| std::iter::once(src).chain(dests.iter()))
+            .cloned()
+            .collect();
+
+        // Sequentially get and process chat information
+        for chat_id in chats_set {
+            let chat_info = client
+                .get_chat(GetChat::builder().chat_id(chat_id).build())
+                .await;
+
+            match chat_info {
+                Ok(chat) => println!(
+                    "Chat loaded: ID - ({}) Name - ({})",
+                    chat_id.to_string().green(),
+                    chat.title().yellow()
+                ),
+                Err(_) => println!("Chat not found: ID - ({})", chat_id.to_string().red()),
+            };
         }
 
-        // Get chats
-        for dest in chats_set {
-            let _ = client.get_chat(GetChat::builder().chat_id(*dest)).await;
-            println!("Chat loaded {dest}");
-        }
-        println!("Load chats Finished...");
+        println!("{}...", "load_chats finished!".blue());
     }
 
     fn set_log_level(&self) {
