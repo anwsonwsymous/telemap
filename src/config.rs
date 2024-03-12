@@ -127,11 +127,10 @@ pub enum FilterConf {
     Unique,
     #[cfg(feature = "ai")]
     Context {
-        title: String,
         #[serde(default = "default_model")]
         model: String,
         #[serde(default)]
-        description: String,
+        context: String,
         #[serde(default)]
         guidelines: String,
     },

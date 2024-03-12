@@ -13,6 +13,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::{env, io};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::task::JoinHandle;
 
 pub const APP_NAME: &str = "Telemap";
 pub const APP_VERSION: &str = "1.0";
@@ -47,7 +48,7 @@ impl App {
         // Set log level
         self.set_log_level();
 
-        let (auth_sender, auth_receiver) = tokio::sync::mpsc::channel(10);
+        let (auth_sender, auth_receiver) = tokio::sync::mpsc::channel(1024);
         let auth_handler = SignalAuthStateHandler::new(auth_receiver);
 
         // Create worker
@@ -58,48 +59,29 @@ impl App {
             .build()
             .unwrap();
 
+        // Create client and main channel
+        let (sender, receiver) = tokio::sync::mpsc::channel::<Box<Update>>(1024);
+
         // Start worker
         println!("{}", "Starting worker...".blue());
         let mut waiter = worker.start();
-
-        // Create client and main channel
-        let (sender, receiver) = tokio::sync::mpsc::channel::<Box<Update>>(100);
-
-        let client = Client::builder()
-            .with_tdlib_parameters(self.build_parameters())
-            .with_updates_sender(sender)
-            .with_auth_state_channel(5)
-            .build()
-            .unwrap();
-
-        // Two sends below are common for TDLib authorization flow.
-        auth_sender.send("".to_string()).await.unwrap(); // empty encryption key
-        auth_sender.send("".to_string()).await.unwrap(); // hack for forcing wait_auth_state_change work
-
-        println!("{}", "Authentication...".blue());
-        let client = tokio::select! {
-            c = worker.bind_client(client) => {
-                match c {
-                    Ok(cl) => cl,
-                    Err(e) => panic!("{:?}", e)
-                }
-            }
-            w = &mut waiter => panic!("{:?}", w)
-        };
-
-        self.process_authentication(&worker, &client, &auth_sender)
+        let client = self
+            .process_authentication(
+                &mut worker,
+                &mut waiter,
+                Client::builder()
+                    .with_tdlib_parameters(self.build_parameters())
+                    .with_updates_sender(sender)
+                    .with_auth_state_channel(5)
+                    .build()
+                    .unwrap(),
+                &auth_sender,
+            )
             .await;
 
-        println!(
-            "{}",
-            "Setting options, loading chats and waiting for updates...".blue()
-        );
-
-        tokio::join!(
-            self.set_client_options(&client),
-            self.load_chats(&client, &self.mappings_index),
-            self.handle_updates(&client, receiver)
-        );
+        self.set_client_options(&client).await;
+        self.load_chats(&client).await;
+        self.handle_updates(&client, receiver).await;
 
         println!("Closing client...");
         client.stop().await.unwrap();
@@ -176,10 +158,27 @@ impl App {
     /// Authentication process with signal auth handler
     async fn process_authentication(
         &mut self,
-        worker: &Worker<SignalAuthStateHandler, TdJson>,
-        client: &Client<TdJson>,
+        worker: &mut Worker<SignalAuthStateHandler, TdJson>,
+        waiter: &mut JoinHandle<()>,
+        client: Client<TdJson>,
         auth_sender: &Sender<String>,
-    ) {
+    ) -> Client<TdJson> {
+        println!("{}", "process_authentication started!".blue());
+
+        // Two sends below are common for TDLib authorization flow.
+        auth_sender.send("".to_string()).await.unwrap(); // empty encryption key
+        auth_sender.send("".to_string()).await.unwrap(); // hack for forcing wait_auth_state_change work
+
+        let client = tokio::select! {
+            c = worker.bind_client(client) => {
+                match c {
+                    Ok(cl) => cl,
+                    Err(e) => panic!("{:?}", e)
+                }
+            }
+            w = waiter => panic!("{:?}", w)
+        };
+
         // Required params for authentication
         let mut phone = env::var("TELEGRAM_PHONE").unwrap();
         let mut password = env::var("TELEGRAM_PASSWORD").unwrap_or_else(|_| "".to_string());
@@ -187,7 +186,7 @@ impl App {
         // TODO: function for output
         loop {
             println!("Auth state handler loop...");
-            match worker.wait_auth_state_change(client).await {
+            match worker.wait_auth_state_change(&client).await {
                 Ok(res) => {
                     match res {
                         Ok(state) => match state {
@@ -217,7 +216,10 @@ impl App {
                                     auth_sender.send(phone.clone()).await.unwrap();
                                     // and handle auth state manually again
                                     worker
-                                        .handle_auth_state(auth_state.authorization_state(), client)
+                                        .handle_auth_state(
+                                            auth_state.authorization_state(),
+                                            &client,
+                                        )
                                         .await
                                         .expect("can't handle it");
                                     // HACK
@@ -236,7 +238,10 @@ impl App {
                                     auth_sender.send(auth_code).await.unwrap();
                                     // and handle auth state manually again
                                     worker
-                                        .handle_auth_state(auth_state.authorization_state(), client)
+                                        .handle_auth_state(
+                                            auth_state.authorization_state(),
+                                            &client,
+                                        )
                                         .await
                                         .expect("can't handle it");
                                     // HACK
@@ -254,7 +259,10 @@ impl App {
                                     auth_sender.send(password.clone()).await.unwrap();
                                     // and handle auth state manually again
                                     worker
-                                        .handle_auth_state(auth_state.authorization_state(), client)
+                                        .handle_auth_state(
+                                            auth_state.authorization_state(),
+                                            &client,
+                                        )
                                         .await
                                         .expect("can't handle it");
                                     // HACK
@@ -276,6 +284,10 @@ impl App {
                 }
             }
         }
+
+        println!("{}", "process_authentication finished!".blue());
+
+        client
     }
 
     /// Set telegram options
@@ -313,7 +325,7 @@ impl App {
     }
 
     /// Get chats from telegram.
-    async fn load_chats(&self, client: &Client<TdJson>, mappings_index: &MappingsIndex) {
+    async fn load_chats(&self, client: &Client<TdJson>) {
         println!("{}...", "load_chats started!".blue());
 
         client
@@ -327,7 +339,8 @@ impl App {
             .unwrap();
 
         // Collect unique chat IDs from both source and destination chats
-        let chats_set: HashSet<i64> = mappings_index
+        let chats_set: HashSet<i64> = self
+            .mappings_index
             .iter()
             .flat_map(|(src, dests)| std::iter::once(src).chain(dests.iter()))
             .cloned()

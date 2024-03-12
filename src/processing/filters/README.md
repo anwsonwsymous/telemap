@@ -26,8 +26,7 @@
 {
   "@type": "Context",
   "model": "gpt-4-turbo-preview",
-  "title": "Crypto/Trading/IT/AI",
-  "description": "Crypto/Trading/IT/AI related news channel",
+  "context": "Crypto/Trading/IT/AI related news channel",
   "guidelines": "1. No hate speech or discriminatory language.\n2. Messages must be relevant to the CONTEXT.\n3. No spam or promotional content."
 }
 ```

@@ -1,6 +1,7 @@
 use crate::processing::data::DataHub;
 use crate::processing::filter::{Filter, FilterResult};
 use crate::processing::helpers::find_input_message_text;
+use async_openai::types::{ChatCompletionResponseFormat, ChatCompletionResponseFormatType};
 use async_openai::{
     config::OpenAIConfig,
     types::{
@@ -10,17 +11,24 @@ use async_openai::{
     Client,
 };
 use lazy_static::lazy_static;
+use serde::Deserialize;
 use std::collections::HashMap;
 use strfmt::strfmt;
 use tokio::sync::Mutex;
 
+/// GPT parameters
+const TEMPERATURE: f32 = 0.0f32;
+const TOP_P: f32 = 0.0f32;
+const MAX_TOKENS: u16 = 215u16;
+const RESPONSE_FORMAT: ChatCompletionResponseFormat = ChatCompletionResponseFormat {
+    r#type: ChatCompletionResponseFormatType::JsonObject,
+};
 const SYSTEM_PROMPT_TEMPLATE: &str = "
 Given the following message and its context, evaluate its appropriateness, relevance, and adherence to predefined guidelines. Provide a decision on whether the message should be allowed or blocked.
 
 Context Information:
 '''
-title: {title}
-description: {description}
+{context}
 '''
 
 Guidelines for Moderation:
@@ -28,13 +36,21 @@ Guidelines for Moderation:
 {guidelines}
 '''
 
-Based on the above information and guidelines, provide your analysis and decision in provided response format.
+Based on the above information and guidelines, provide your analysis and decision.
 
-IMPORTANT!!! Your answer should contain only one numeric value: 1 if message allowed, 0 if not allowed
+IMPORTANT!!! Always return response in JSON format with 2 keys - analyses and allow.
+analyses - MUST be text/string.
+allow - MUST be true or false.
 ";
 
 lazy_static! {
     static ref CLIENT: Mutex<Client<OpenAIConfig>> = Mutex::new(Client::new());
+}
+
+#[derive(Default, Deserialize)]
+struct Response {
+    #[serde(default)]
+    pub allow: bool,
 }
 
 /// Filter by context using LLM
@@ -59,7 +75,7 @@ impl Filter for Context {
         }
 
         let user_message = ChatCompletionRequestUserMessageArgs::default()
-            .content(format!("User Message: '''{}'''", input_text.unwrap()))
+            .content(format!("User Message: '''\n{}\n'''", input_text.unwrap()))
             .build()
             .unwrap()
             .into();
@@ -71,10 +87,11 @@ impl Filter for Context {
             .into();
 
         let request = CreateChatCompletionRequestArgs::default()
-            .max_tokens(10u16)
-            .temperature(0.5f32)
-            .top_p(0.5f32)
             .model(&self.model)
+            .response_format(RESPONSE_FORMAT)
+            .max_tokens(MAX_TOKENS)
+            .temperature(TEMPERATURE)
+            .top_p(TOP_P)
             .messages([system_message, user_message])
             .build()
             .unwrap();
@@ -87,14 +104,11 @@ impl Filter for Context {
                 .choices
                 .iter()
                 .any(|choice| {
-                    choice
-                        .message
-                        .content
-                        .as_ref()
-                        .unwrap_or(&"0".to_string())
-                        .parse::<u8>()
-                        .unwrap_or(0)
-                        == 1
+                    serde_json::from_str::<Response>(
+                        choice.message.content.as_ref().unwrap_or(&"{}".to_string()),
+                    )
+                    .unwrap()
+                    .allow
                 })
                 .then_some(())
                 .ok_or(()),
@@ -108,15 +122,10 @@ pub struct ContextBuilder {
 }
 
 impl ContextBuilder {
-    pub fn title(&mut self, title: String) -> &mut ContextBuilder {
-        self.inner.context_vars.insert("title".to_string(), title);
-        self
-    }
-
-    pub fn description(&mut self, description: String) -> &mut ContextBuilder {
+    pub fn context(&mut self, context: String) -> &mut ContextBuilder {
         self.inner
             .context_vars
-            .insert("description".to_string(), description);
+            .insert("context".to_string(), context);
         self
     }
 
@@ -203,10 +212,9 @@ mod tests {
 
         // This will pass only third message, first two must be ignored
         let filter = FilterType::from(FilterConf::Context {
-            model: "gpt-4-turbo-preview".to_string(),
-            title: "Jobs/Vacancies".to_string(),
-            description: r"
-                Only detailed vacancy/job messages, with title, position etc.
+            model: "gpt-3.5-turbo".to_string(),
+            context: r"
+                Jobs/Vacancies. Only detailed vacancy/job messages, with title, position etc.
             "
             .to_string(),
             guidelines: r"

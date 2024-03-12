@@ -134,14 +134,12 @@ impl From<FilterConf> for FilterType {
             #[cfg(feature = "ai")]
             FilterConf::Context {
                 model,
-                title,
-                description,
+                context,
                 guidelines,
             } => FilterType::Context(
                 Context::builder()
                     .model(model)
-                    .title(title)
-                    .description(description)
+                    .context(context)
                     .guidelines(guidelines)
                     .build(),
             ),
