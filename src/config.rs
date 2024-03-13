@@ -125,13 +125,12 @@ pub enum FilterConf {
     },
     #[cfg(feature = "storage")]
     Unique,
-    #[cfg(feature = "ai")]
-    Context {
-        title: String,
+    #[cfg(feature = "openai")]
+    OpenAi {
         #[serde(default = "default_model")]
         model: String,
         #[serde(default)]
-        description: String,
+        context: String,
         #[serde(default)]
         guidelines: String,
     },

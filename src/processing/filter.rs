@@ -1,7 +1,7 @@
 use crate::config::FilterConf;
 use crate::processing::data::DataHub;
 use crate::processing::filters::{
-    Context, Counter, Duration, FileSize, Incoming, MessageType, Regexp, TextLength, Unique,
+    Counter, Duration, FileSize, Incoming, MessageType, OpenAi, Regexp, TextLength, Unique,
     WordList, WordListType,
 };
 
@@ -48,8 +48,8 @@ pub enum FilterType {
     #[cfg(feature = "storage")]
     Unique(Unique),
     /// Filter by context using LLM
-    #[cfg(feature = "ai")]
-    Context(Context),
+    #[cfg(feature = "openai")]
+    OpenAi(OpenAi),
 }
 
 impl Filter for FilterType {
@@ -71,8 +71,8 @@ impl Filter for FilterType {
             Self::BlackList(f) => f.filter(data).await,
             #[cfg(feature = "storage")]
             Self::Unique(f) => f.filter(data).await,
-            #[cfg(feature = "ai")]
-            Self::Context(f) => f.filter(data).await,
+            #[cfg(feature = "openai")]
+            Self::OpenAi(f) => f.filter(data).await,
         }
     }
 }
@@ -131,17 +131,15 @@ impl From<FilterConf> for FilterType {
             #[cfg(feature = "storage")]
             FilterConf::Unique => FilterType::Unique(Unique),
 
-            #[cfg(feature = "ai")]
-            FilterConf::Context {
+            #[cfg(feature = "openai")]
+            FilterConf::OpenAi {
                 model,
-                title,
-                description,
+                context,
                 guidelines,
-            } => FilterType::Context(
-                Context::builder()
+            } => FilterType::OpenAi(
+                OpenAi::builder()
                     .model(model)
-                    .title(title)
-                    .description(description)
+                    .context(context)
                     .guidelines(guidelines)
                     .build(),
             ),

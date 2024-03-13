@@ -1,6 +1,7 @@
 use crate::processing::data::DataHub;
 use crate::processing::filter::{Filter, FilterResult};
 use crate::processing::helpers::find_input_message_text;
+use async_openai::types::{ChatCompletionResponseFormat, ChatCompletionResponseFormatType};
 use async_openai::{
     config::OpenAIConfig,
     types::{
@@ -10,17 +11,24 @@ use async_openai::{
     Client,
 };
 use lazy_static::lazy_static;
+use serde::Deserialize;
 use std::collections::HashMap;
 use strfmt::strfmt;
 use tokio::sync::Mutex;
 
+/// GPT parameters
+const TEMPERATURE: f32 = 0.0f32;
+const TOP_P: f32 = 0.0f32;
+const MAX_TOKENS: u16 = 215u16;
+const RESPONSE_FORMAT: ChatCompletionResponseFormat = ChatCompletionResponseFormat {
+    r#type: ChatCompletionResponseFormatType::JsonObject,
+};
 const SYSTEM_PROMPT_TEMPLATE: &str = "
 Given the following message and its context, evaluate its appropriateness, relevance, and adherence to predefined guidelines. Provide a decision on whether the message should be allowed or blocked.
 
 Context Information:
 '''
-title: {title}
-description: {description}
+{context}
 '''
 
 Guidelines for Moderation:
@@ -28,107 +36,112 @@ Guidelines for Moderation:
 {guidelines}
 '''
 
-Based on the above information and guidelines, provide your analysis and decision in provided response format.
+Based on the above information and guidelines, provide your analysis and decision.
 
-IMPORTANT!!! ONLY Answer with this Response Format: 
-0 // Deny
-1 // Allow
+IMPORTANT!!! Always return response in JSON format with 2 keys - analyses and allow.
+analyses - MUST be text/string.
+allow - MUST be true or false.
 ";
 
 lazy_static! {
     static ref CLIENT: Mutex<Client<OpenAIConfig>> = Mutex::new(Client::new());
 }
 
+#[derive(Default, Deserialize)]
+struct Response {
+    #[serde(default)]
+    pub allow: bool,
+}
+
 /// Filter by context using LLM
 #[derive(Debug, Default, Clone)]
-pub struct Context {
+pub struct OpenAi {
     model: String,
     context_vars: HashMap<String, String>,
 }
 
-impl Context {
-    pub fn builder() -> ContextBuilder {
-        let inner = Context::default();
-        ContextBuilder { inner }
+impl OpenAi {
+    pub fn builder() -> OpenAiBuilder {
+        let inner = OpenAi::default();
+        OpenAiBuilder { inner }
     }
 }
 
-impl Filter for Context {
+impl Filter for OpenAi {
     async fn filter(&self, data: &DataHub) -> FilterResult {
+        let input_text = find_input_message_text(data.input.message());
+        if input_text.is_none() {
+            return Err(());
+        }
+
+        let user_message = ChatCompletionRequestUserMessageArgs::default()
+            .content(format!("User Message: '''\n{}\n'''", input_text.unwrap()))
+            .build()
+            .unwrap()
+            .into();
+
+        let system_message = ChatCompletionRequestSystemMessageArgs::default()
+            .content(strfmt(SYSTEM_PROMPT_TEMPLATE, &self.context_vars).unwrap())
+            .build()
+            .unwrap()
+            .into();
+
         let request = CreateChatCompletionRequestArgs::default()
-            .max_tokens(1u16)
-            .temperature(2.0f32)
             .model(&self.model)
-            .messages([
-                ChatCompletionRequestSystemMessageArgs::default()
-                    .content(strfmt(SYSTEM_PROMPT_TEMPLATE, &self.context_vars).unwrap())
-                    .build()
-                    .unwrap()
-                    .into(),
-                ChatCompletionRequestUserMessageArgs::default()
-                    .content(
-                        find_input_message_text(data.input.message())
-                            .unwrap()
-                            .to_string(),
-                    )
-                    .build()
-                    .unwrap()
-                    .into(),
-            ])
+            .response_format(RESPONSE_FORMAT)
+            .max_tokens(MAX_TOKENS)
+            .temperature(TEMPERATURE)
+            .top_p(TOP_P)
+            .messages([system_message, user_message])
             .build()
             .unwrap();
 
         let client = CLIENT.lock().await;
-        let response = client.chat().create(request).await.unwrap();
+        let response = client.chat().create(request).await;
 
-        response
-            .choices
-            .iter()
-            .any(|choice| {
-                choice
-                    .message
-                    .content
-                    .as_ref()
-                    .unwrap_or(&"0".to_string())
-                    .parse::<u8>()
-                    .unwrap_or(0)
-                    == 1
-            })
-            .then_some(())
-            .ok_or(())
+        match response {
+            Ok(response) => response
+                .choices
+                .iter()
+                .any(|choice| {
+                    serde_json::from_str::<Response>(
+                        choice.message.content.as_ref().unwrap_or(&"{}".to_string()),
+                    )
+                    .unwrap()
+                    .allow
+                })
+                .then_some(())
+                .ok_or(()),
+            _ => Err(()),
+        }
     }
 }
 
-pub struct ContextBuilder {
-    inner: Context,
+pub struct OpenAiBuilder {
+    inner: OpenAi,
 }
 
-impl ContextBuilder {
-    pub fn title(&mut self, title: String) -> &mut ContextBuilder {
-        self.inner.context_vars.insert("title".to_string(), title);
-        self
-    }
-
-    pub fn description(&mut self, description: String) -> &mut ContextBuilder {
+impl OpenAiBuilder {
+    pub fn context(&mut self, context: String) -> &mut OpenAiBuilder {
         self.inner
             .context_vars
-            .insert("description".to_string(), description);
+            .insert("context".to_string(), context);
         self
     }
 
-    pub fn guidelines(&mut self, guidelines: String) -> &mut ContextBuilder {
+    pub fn guidelines(&mut self, guidelines: String) -> &mut OpenAiBuilder {
         self.inner
             .context_vars
             .insert("guidelines".to_string(), guidelines);
         self
     }
 
-    pub fn model(&mut self, model: String) -> &mut ContextBuilder {
+    pub fn model(&mut self, model: String) -> &mut OpenAiBuilder {
         self.inner.model = model;
         self
     }
 
-    pub fn build(&self) -> Context {
+    pub fn build(&self) -> OpenAi {
         self.inner.clone()
     }
 }
@@ -140,9 +153,26 @@ mod tests {
     use crate::processing::filter::{Filter, FilterType};
     use crate::processing::test_helpers::{message_example, sender_user_example, MessageMock};
 
+    fn openai_filter() -> FilterType {
+        FilterType::from(FilterConf::OpenAi {
+            model: "gpt-3.5-turbo".to_string(),
+            context: r"
+                Jobs/Vacancies. Only detailed vacancy/job messages, with title, position etc.
+            "
+            .to_string(),
+            guidelines: r"
+                1. No hate speech or discriminatory language.
+                2. Messages must be relevant to the CONTEXT.
+                3. No spam or promotional content.
+            "
+            .to_string(),
+        })
+    }
+
+    #[ignore]
     #[tokio::test]
-    async fn test_context() {
-        let success_data = DataHub::new(message_example(
+    async fn test_success_openai() {
+        let data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some(
                 r"
@@ -179,7 +209,13 @@ mod tests {
             false,
         ));
 
-        let fail_data = DataHub::new(message_example(
+        assert_eq!(Ok(()), openai_filter().filter(&data).await);
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_fail_openai() {
+        let data = DataHub::new(message_example(
             sender_user_example(),
             MessageMock::Text(Some(
                 r"
@@ -191,28 +227,11 @@ mod tests {
                 
                 While bitcoin has faced criticism for its association with illegal activities and its environmental impact due to high energy consumption, it has also been praised for its potential to revolutionize the financial industry and increase financial inclusion for people around the world.
                 "
-                .to_string(),
+                    .to_string(),
             )),
             false,
         ));
 
-        // This will pass only third message, first two must be ignored
-        let filter = FilterType::from(FilterConf::Context {
-            model: "gpt-4-turbo-preview".to_string(),
-            title: "Jobs/Vacancies".to_string(),
-            description: r"
-                Only detailed vacancy/job messages, with title, position etc.
-            "
-            .to_string(),
-            guidelines: r"
-                1. No hate speech or discriminatory language.
-                2. Messages must be relevant to the CONTEXT.
-                3. No spam or promotional content.
-            "
-            .to_string(),
-        });
-
-        assert_eq!(Ok(()), filter.filter(&success_data).await);
-        assert_eq!(Err(()), filter.filter(&fail_data).await);
+        assert_eq!(Err(()), openai_filter().filter(&data).await);
     }
 }

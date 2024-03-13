@@ -49,6 +49,7 @@ Steps below are required for both options
             --tty \
             --memory 25m \
             --volume $(pwd)/telegram_database:/app/telegram_database \
+            --volume $(pwd)/storage:/app/storage \
             --volume $(pwd)/config:/config \
             --volume $(pwd)/.env:/app/.env \
             --env-file $(pwd)/.env

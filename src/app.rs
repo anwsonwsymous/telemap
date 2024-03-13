@@ -5,14 +5,15 @@ use rust_tdlib::client::tdlib_client::TdJson;
 use rust_tdlib::client::{Client, ClientState, SignalAuthStateHandler, Worker};
 use rust_tdlib::tdjson;
 use rust_tdlib::types::{
-    AuthorizationState, GetChat, OptionValue, OptionValueBoolean, SendMessage, SetOption,
-    TdlibParameters, Update,
+    AuthorizationState, ChatList, GetChat, LoadChats, OptionValue, OptionValueBoolean, SendMessage,
+    SetOption, TdlibParameters, Update,
 };
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{env, io};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::task::JoinHandle;
 
 pub const APP_NAME: &str = "Telemap";
 pub const APP_VERSION: &str = "1.0";
@@ -42,12 +43,12 @@ impl From<Configs> for App {
 impl App {
     /// Entrypoint
     pub async fn start(&mut self) {
-        println!("Application State on start: {:?}", self);
+        println!("{}: {:?}", "Application State on start".blue(), self);
 
         // Set log level
         self.set_log_level();
 
-        let (auth_sender, auth_receiver) = tokio::sync::mpsc::channel(10);
+        let (auth_sender, auth_receiver) = tokio::sync::mpsc::channel(1024);
         let auth_handler = SignalAuthStateHandler::new(auth_receiver);
 
         // Create worker
@@ -58,44 +59,29 @@ impl App {
             .build()
             .unwrap();
 
-        // Start worker
-        println!("Starting worker...");
-        let mut waiter = worker.start();
-
         // Create client and main channel
-        let (sender, receiver) = tokio::sync::mpsc::channel::<Box<Update>>(100);
+        let (sender, receiver) = tokio::sync::mpsc::channel::<Box<Update>>(1024);
 
-        let client = Client::builder()
-            .with_tdlib_parameters(self.build_parameters())
-            .with_updates_sender(sender)
-            .with_auth_state_channel(5)
-            .build()
-            .unwrap();
-
-        // Two sends below are common for TDLib authorization flow.
-        auth_sender.send("".to_string()).await.unwrap(); // empty encryption key
-        auth_sender.send("".to_string()).await.unwrap(); // hack for forcing wait_auth_state_change work
-
-        println!("Authentication...");
-        let client = tokio::select! {
-            c = worker.bind_client(client) => {
-                match c {
-                    Ok(cl) => cl,
-                    Err(e) => panic!("{:?}", e)
-                }
-            }
-            w = &mut waiter => panic!("{:?}", w)
-        };
-
-        self.process_authentication(&worker, &client, &auth_sender)
+        // Start worker
+        println!("{}", "Starting worker...".blue());
+        let mut waiter = worker.start();
+        let client = self
+            .process_authentication(
+                &mut worker,
+                &mut waiter,
+                Client::builder()
+                    .with_tdlib_parameters(self.build_parameters())
+                    .with_updates_sender(sender)
+                    .with_auth_state_channel(5)
+                    .build()
+                    .unwrap(),
+                &auth_sender,
+            )
             .await;
 
-        println!("Setting options, loading chats and waiting for updates...");
-        tokio::join!(
-            self.set_client_options(&client),
-            self.load_chats(&client, &self.mappings_index),
-            self.handle_updates(&client, receiver)
-        );
+        self.set_client_options(&client).await;
+        self.load_chats(&client).await;
+        self.handle_updates(&client, receiver).await;
 
         println!("Closing client...");
         client.stop().await.unwrap();
@@ -113,6 +99,8 @@ impl App {
 
     /// Handle incoming updates from Telegram
     async fn handle_updates(&self, client: &Client<TdJson>, mut receiver: Receiver<Box<Update>>) {
+        println!("{}...", "handle_updates started!".blue());
+
         let default_pipeline = vec![Pipeline::default()];
 
         while let Some(update) = receiver.recv().await {
@@ -140,6 +128,8 @@ impl App {
                             pipelines
                         );
 
+                        // TODO: Collect additional data for passing to pipeline
+
                         for pipeline in pipelines {
                             match pipeline.handle(new_message.clone()).await {
                                 Ok(output_message_content) => {
@@ -149,13 +139,19 @@ impl App {
                                         .build();
                                     if let Err(e) = client.send_message(send_message).await {
                                         println!(
-                                            "{} {}: {}",
-                                            "Message not sent to".red(),
+                                            "{} {} -> {} {}",
+                                            "Failed on send_message :".red(),
+                                            source_chat_id,
                                             dest_chat_id,
                                             e
                                         );
                                     } else {
-                                        println!("{}: {}", "Message sent to".green(), dest_chat_id);
+                                        println!(
+                                            "{} {} -> {}",
+                                            "Message sent :".green(),
+                                            source_chat_id,
+                                            dest_chat_id
+                                        );
                                     }
                                 }
                                 Err(e) => println!("{}: {:?}", "Error in Pipeline handle".red(), e),
@@ -170,10 +166,27 @@ impl App {
     /// Authentication process with signal auth handler
     async fn process_authentication(
         &mut self,
-        worker: &Worker<SignalAuthStateHandler, TdJson>,
-        client: &Client<TdJson>,
+        worker: &mut Worker<SignalAuthStateHandler, TdJson>,
+        waiter: &mut JoinHandle<()>,
+        client: Client<TdJson>,
         auth_sender: &Sender<String>,
-    ) {
+    ) -> Client<TdJson> {
+        println!("{}", "process_authentication started!".blue());
+
+        // Two sends below are common for TDLib authorization flow.
+        auth_sender.send("".to_string()).await.unwrap(); // empty encryption key
+        auth_sender.send("".to_string()).await.unwrap(); // hack for forcing wait_auth_state_change work
+
+        let client = tokio::select! {
+            c = worker.bind_client(client) => {
+                match c {
+                    Ok(cl) => cl,
+                    Err(e) => panic!("{:?}", e)
+                }
+            }
+            w = waiter => panic!("{:?}", w)
+        };
+
         // Required params for authentication
         let mut phone = env::var("TELEGRAM_PHONE").unwrap();
         let mut password = env::var("TELEGRAM_PASSWORD").unwrap_or_else(|_| "".to_string());
@@ -181,7 +194,7 @@ impl App {
         // TODO: function for output
         loop {
             println!("Auth state handler loop...");
-            match worker.wait_auth_state_change(client).await {
+            match worker.wait_auth_state_change(&client).await {
                 Ok(res) => {
                     match res {
                         Ok(state) => match state {
@@ -211,7 +224,10 @@ impl App {
                                     auth_sender.send(phone.clone()).await.unwrap();
                                     // and handle auth state manually again
                                     worker
-                                        .handle_auth_state(auth_state.authorization_state(), client)
+                                        .handle_auth_state(
+                                            auth_state.authorization_state(),
+                                            &client,
+                                        )
                                         .await
                                         .expect("can't handle it");
                                     // HACK
@@ -230,7 +246,10 @@ impl App {
                                     auth_sender.send(auth_code).await.unwrap();
                                     // and handle auth state manually again
                                     worker
-                                        .handle_auth_state(auth_state.authorization_state(), client)
+                                        .handle_auth_state(
+                                            auth_state.authorization_state(),
+                                            &client,
+                                        )
                                         .await
                                         .expect("can't handle it");
                                     // HACK
@@ -248,7 +267,10 @@ impl App {
                                     auth_sender.send(password.clone()).await.unwrap();
                                     // and handle auth state manually again
                                     worker
-                                        .handle_auth_state(auth_state.authorization_state(), client)
+                                        .handle_auth_state(
+                                            auth_state.authorization_state(),
+                                            &client,
+                                        )
                                         .await
                                         .expect("can't handle it");
                                     // HACK
@@ -270,103 +292,85 @@ impl App {
                 }
             }
         }
+
+        println!("{}", "process_authentication finished!".blue());
+
+        client
     }
 
     /// Set telegram options
     async fn set_client_options(&self, client: &Client<TdJson>) {
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("always_parse_markdown")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("always parse markdown option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("disable_animated_emoji")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("disable animated emoji option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("disable_persistent_network_statistics")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("disable persistent network statistics option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("ignore_inline_thumbnails")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(true).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("ignore inline thumbnails option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("is_location_visible")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(false).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("location option set...");
-        client
-            .set_option(
-                SetOption::builder()
-                    .name("online")
-                    .value(OptionValue::Boolean(
-                        OptionValueBoolean::builder().value(false).build(),
-                    ))
-                    .build(),
-            )
-            .await
-            .unwrap();
-        println!("online option set...");
+        println!("{}", "set_client_options started!".blue());
 
-        println!("Set Options Finished....");
-    }
+        let options = [
+            ("always_parse_markdown", true),
+            ("disable_animated_emoji", true),
+            ("disable_persistent_network_statistics", true),
+            ("ignore_inline_thumbnails", true),
+            ("is_location_visible", false),
+            ("online", false),
+        ];
 
-    /// Get chats from telegram.
-    async fn load_chats(&self, client: &Client<TdJson>, mappings_index: &MappingsIndex) {
-        let mut chats_set = HashSet::new();
+        for (name, value) in options.iter() {
+            let result = client
+                .set_option(
+                    SetOption::builder()
+                        .name(name)
+                        .value(OptionValue::Boolean(
+                            OptionValueBoolean::builder().value(*value).build(),
+                        ))
+                        .build(),
+                )
+                .await;
 
-        // Make unique destination chats
-        for (_, dests) in mappings_index.iter() {
-            for dest in dests {
-                chats_set.insert(dest);
+            match result {
+                Ok(_) => println!("{} {}...", name.yellow(), "option set".green()),
+                Err(_) => eprintln!("{} {}...", "Failed to set option".red(), name),
             }
         }
 
-        // Get chats
-        for dest in chats_set {
-            let _ = client.get_chat(GetChat::builder().chat_id(*dest)).await;
-            println!("Chat loaded {dest}");
+        println!("{}", "set_client_options finished!".blue());
+    }
+
+    /// Get chats from telegram.
+    async fn load_chats(&self, client: &Client<TdJson>) {
+        println!("{}...", "load_chats started!".blue());
+
+        client
+            .load_chats(
+                LoadChats::builder()
+                    .chat_list(ChatList::default())
+                    .limit(200i32)
+                    .build(),
+            )
+            .await
+            .unwrap();
+
+        // Collect unique chat IDs from both source and destination chats
+        let chats_set: HashSet<i64> = self
+            .mappings_index
+            .iter()
+            .flat_map(|(src, dests)| std::iter::once(src).chain(dests.iter()))
+            .cloned()
+            .collect();
+
+        // Sequentially get and process chat information
+        for chat_id in chats_set {
+            let chat_info = client
+                .get_chat(GetChat::builder().chat_id(chat_id).build())
+                .await;
+
+            match chat_info {
+                Ok(chat) => println!(
+                    "Chat loaded: ID - ({}) Name - ({})",
+                    chat_id.to_string().green(),
+                    chat.title().yellow()
+                ),
+                Err(_) => println!("Chat not found: ID - ({})", chat_id.to_string().red()),
+            };
         }
-        println!("Load chats Finished...");
+
+        println!("{}...", "load_chats finished!".blue());
     }
 
     fn set_log_level(&self) {
