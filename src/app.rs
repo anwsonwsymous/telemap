@@ -29,6 +29,8 @@ pub struct App {
     pub mappings_index: Arc<MappingsIndex>,
     /// Index of pipelines. Keys are "routes" (source_chat_id:dest_chat_id) and values are Pipelines
     pub pipelines_index: Arc<PipelinesIndex>,
+    /// Chats names
+    pub indexed_chats: HashMap<i64, String>,
 }
 
 impl From<Configs> for App {
@@ -36,6 +38,7 @@ impl From<Configs> for App {
         Self {
             mappings_index: Arc::new(MappingsIndex::from(configs.maps)),
             pipelines_index: Arc::new(PipelinesIndex::from(configs.pipelines)),
+            indexed_chats: HashMap::default(),
         }
     }
 }
@@ -123,12 +126,11 @@ impl App {
                             });
 
                         println!(
-                            "{}:{:?}",
-                            "Pipelines for received message".green(),
+                            "{}: {} {:?}",
+                            "New Message".green(),
+                            self.get_chat_info(source_chat_id),
                             pipelines
                         );
-
-                        // TODO: Collect additional data for passing to pipeline
 
                         for pipeline in pipelines {
                             match pipeline.handle(new_message.clone()).await {
@@ -139,18 +141,16 @@ impl App {
                                         .build();
                                     if let Err(e) = client.send_message(send_message).await {
                                         println!(
-                                            "{} {} -> {} {}",
+                                            "{} {} {}",
                                             "Failed on send_message :".red(),
-                                            source_chat_id,
-                                            dest_chat_id,
+                                            self.get_route_info(source_chat_id, dest_chat_id),
                                             e
                                         );
                                     } else {
                                         println!(
-                                            "{} {} -> {}",
+                                            "{} {}",
                                             "Message sent :".green(),
-                                            source_chat_id,
-                                            dest_chat_id
+                                            self.get_route_info(source_chat_id, dest_chat_id)
                                         );
                                     }
                                 }
@@ -333,7 +333,7 @@ impl App {
     }
 
     /// Get chats from telegram.
-    async fn load_chats(&self, client: &Client<TdJson>) {
+    async fn load_chats(&mut self, client: &Client<TdJson>) {
         println!("{}...", "load_chats started!".blue());
 
         client
@@ -361,16 +361,38 @@ impl App {
                 .await;
 
             match chat_info {
-                Ok(chat) => println!(
-                    "Chat loaded: ID - ({}) Name - ({})",
-                    chat_id.to_string().green(),
-                    chat.title().yellow()
-                ),
+                Ok(chat) => {
+                    println!(
+                        "Chat loaded: ID - ({}) Name - ({})",
+                        chat_id.to_string().green(),
+                        chat.title().yellow()
+                    );
+
+                    self.indexed_chats.insert(chat_id, chat.title().into());
+                }
                 Err(_) => println!("Chat not found: ID - ({})", chat_id.to_string().red()),
             };
         }
 
         println!("{}...", "load_chats finished!".blue());
+    }
+
+    fn get_route_info(&self, source_chat_id: &i64, dest_chat_id: &i64) -> String {
+        format!(
+            "{} -> {}",
+            self.get_chat_info(source_chat_id),
+            self.get_chat_info(dest_chat_id)
+        )
+    }
+
+    fn get_chat_info(&self, chat_id: &i64) -> String {
+        format!(
+            "{} ({})",
+            self.indexed_chats
+                .get(chat_id)
+                .unwrap_or(&chat_id.to_string()),
+            chat_id
+        )
     }
 
     fn set_log_level(&self) {
